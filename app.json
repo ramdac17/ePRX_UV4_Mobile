@@ -1,29 +1,73 @@
 {
   "expo": {
-    "name": "ePRX_UV4_Mobile",
-    "slug": "ePRX_UV4_Mobile",
+    "name": "ePRX UV1",
+    "slug": "eprx-uv1-monorepo",
+    "scheme": "eprx-uv1",
     "version": "1.0.0",
+    "owner": "ramdac17",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/images/icon.png",
+    "userInterfaceStyle": "dark",
+    "jsEngine": "hermes",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
-    "ios": {
-      "supportsTablet": true
+      "backgroundColor": "#000000"
     },
     "android": {
+      "package": "com.eprx.uv1",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "FOREGROUND_SERVICE",
+        "RECORD_AUDIO"
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "YOUR_GOOGLE_MAPS_API_KEY_HERE"
+        }
+      },
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#000000"
       }
     },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "ios": {
+      "bundleIdentifier": "com.eprx.uv1",
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "ePRX UV1 needs location access to track your missions and display them on the map.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "ePRX UV1 tracks your mission progress even when the device is locked.",
+        "NSPhotoLibraryUsageDescription": "Allow ePRX UV1 to access your photos to upload documentation.",
+        "NSCameraUsageDescription": "Allow ePRX UV1 to use your camera to capture data."
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow ePRX UV1 to access your photos to upload documentation.",
+          "cameraPermission": "Allow ePRX UV1 to use your camera to capture data."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "Allow ePRX UV1 to access your location even when the app is in the background.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "7f52b4c3-6e47-4dce-b946-831c55d4620a"
+      }
     }
   }
 }
