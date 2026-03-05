@@ -1,6 +1,7 @@
 import { Tabs } from "expo-router";
-import { Home, User, Cog, Activity } from "lucide-react-native";
+import { Home, User, Cog, History } from "lucide-react-native";
 import { CYBER_THEME } from "@/constants/Colors";
+import { Platform } from "react-native";
 
 export default function TabLayout() {
   return (
@@ -8,47 +9,64 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: CYBER_THEME.primary,
         tabBarInactiveTintColor: "#444",
+        headerShown: false,
         tabBarStyle: {
           backgroundColor: "#000",
-          borderTopColor: "#222",
-          height: 60,
-          paddingBottom: 10,
+          borderTopColor: "#1a1a1a",
+          borderTopWidth: 1,
+          height: Platform.OS === "ios" ? 88 : 65,
+          paddingBottom: Platform.OS === "ios" ? 30 : 10,
+          paddingTop: 10,
         },
-        headerShown: false,
+        tabBarLabelStyle: {
+          fontSize: 10,
+          fontWeight: "900",
+          letterSpacing: 1,
+        },
       }}
     >
-      {/* Maps to index.tsx */}
+      {/* 🏠 CORE DASHBOARD */}
       <Tabs.Screen
         name="index"
         options={{
-          title: "HOME",
-          tabBarIcon: ({ color }) => <Home size={24} color={color} />,
+          title: "DASHBOARD",
+          tabBarIcon: ({ color }) => <Home size={22} color={color} />,
         }}
       />
 
-      {/* Maps to profile.tsx (Previously two.tsx) */}
+      {/* 📜 MISSION LOGS */}
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: "HISTORY",
+          tabBarIcon: ({ color }) => <History size={22} color={color} />,
+        }}
+      />
+
+      {/* 🕵️ INVISIBLE DETAIL SCREEN (Ghost Route) */}
+      {/* Name MUST match the filename in your directory exactly */}
+      <Tabs.Screen
+        name="activity-detail/[id]"
+        options={{
+          href: null, // This hides it from the bottom bar
+        }}
+      />
+
+      {/* 👤 OPERATIVE IDENTITY */}
       <Tabs.Screen
         name="profile"
         options={{
           title: "IDENTITY",
-          tabBarIcon: ({ color }) => <User size={24} color={color} />,
+          tabBarIcon: ({ color }) => <User size={22} color={color} />,
         }}
       />
 
-      {/* Maps to settings.tsx */}
+      {/* ⚙️ SYSTEM CONFIG */}
       <Tabs.Screen
         name="settings"
         options={{
           title: "CONFIG",
-          tabBarIcon: ({ color }) => <Cog size={24} color={color} />,
-        }}
-      />
-
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: "History",
-          tabBarIcon: ({ color }) => <Activity color={color} size={24} />,
+          tabBarIcon: ({ color }) => <Cog size={22} color={color} />,
         }}
       />
     </Tabs>

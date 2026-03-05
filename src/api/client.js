@@ -1,11 +1,16 @@
 import axios from "axios";
 
 // 1. Replace with your actual Railway URL
-const RAILWAY_URL = "http://eprxuv1-monorepo-production.up.railway.app";
+// const RAILWAY_URL = "http://eprxuv1-monorepo-production.up.railway.app";
+const LOCAL_IP = "192.168.0.152";
+const API_URL = `http://${LOCAL_IP}:3000/api`;
+console.log("🚀 MOBILE_UPLINK_TARGET:", API_URL);
 
 const apiClient = axios.create({
-  baseURL: RAILWAY_URL,
-  timeout: 15000, // 15 seconds
+  // Enable this on production
+  // baseURL: RAILWAY_URL,
+  baseURL: API_URL,
+  timeout: 10000, // 15 seconds
   headers: {
     "Content-Type": "application/json",
   },

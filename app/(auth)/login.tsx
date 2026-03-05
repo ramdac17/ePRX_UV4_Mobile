@@ -11,7 +11,6 @@ import {
 import { Text, View } from "@/components/Themed";
 import { CYBER_THEME } from "@/constants/Colors";
 import { useRouter } from "expo-router";
-// ✅ Removed AsyncStorage in favor of our secure helper
 import { storeToken } from "@/utils/authStorage";
 import api from "@/utils/api";
 
@@ -24,13 +23,12 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("REQUIRED", "CREDENTIAL_ID_OR_ACCESS_CODE_MISSING");
+      Alert.alert("REQUIRED", "USER_EMAIL AND PASSWORD REQUIRED");
       return;
     }
 
     setIsLoading(true);
     try {
-      // ✅ Using 'api' instance for consistent baseURL/interceptors
       const response = await api.post("/auth/login", {
         email: email.toLowerCase().trim(),
         password,
@@ -39,15 +37,15 @@ export default function LoginScreen() {
       const token = response.data.access_token;
 
       if (token && typeof token === "string") {
-        // ✅ SECURE UPLINK: Use the helper to store in SecureStore
+        // SECURE UPLINK: Store in SecureStore
         await storeToken(token);
 
-        // ✅ Immediate Header Injection
+        // Immediate Header Injection for current session
         api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-        console.log("📡 ePRX_UV4_SESSION_ESTABLISHED");
+        console.log("📡 ePRX_UV1_SESSION_ESTABLISHED");
 
-        // Navigation now only happens after the token is confirmed in the vault
+        // Navigate to main interface
         router.replace("/(tabs)");
       } else {
         throw new Error("INVALID_TOKEN_FORMAT");
@@ -72,18 +70,18 @@ export default function LoginScreen() {
 
         <View style={styles.header}>
           <Text style={styles.logoText}>
-            ePRX <Text style={{ color: CYBER_THEME.primary }}>UV4</Text>
+            ePRX <Text style={{ color: CYBER_THEME.primary }}>UV1</Text>
           </Text>
           <Text style={styles.subtitle}>
-            {isLoading ? "VERIFYING_CREDENTIALS..." : "AUTHENTICATION_REQUIRED"}
+            {isLoading ? "VERIFYING_CREDENTIALS..." : "AUTHENTICATION REQUIRED"}
           </Text>
         </View>
 
         <View style={styles.glassCard}>
-          <Text style={styles.label}>CREDENTIAL_ID</Text>
+          <Text style={styles.label}>USER EMAIL ADDRESS</Text>
           <TextInput
             style={[styles.input, isLoading && { opacity: 0.5 }]}
-            placeholder="USER@SYSTEM.IO"
+            placeholder="user@service.com"
             placeholderTextColor="#444"
             value={email}
             onChangeText={setEmail}
@@ -92,7 +90,7 @@ export default function LoginScreen() {
             keyboardType="email-address"
           />
 
-          <Text style={styles.label}>ACCESS_CODE</Text>
+          <Text style={styles.label}>PASSWORD</Text>
           <TextInput
             style={[styles.input, isLoading && { opacity: 0.5 }]}
             placeholder="••••••••"
@@ -114,17 +112,31 @@ export default function LoginScreen() {
             {isLoading ? (
               <ActivityIndicator color="#000" />
             ) : (
-              <Text style={styles.buttonText}>INITIALIZE_LOGIN</Text>
+              <Text style={styles.buttonText}>LOGIN</Text>
             )}
           </Pressable>
 
-          <Pressable
-            style={styles.secondaryLink}
-            onPress={() => router.push("/(auth)/register")}
-            disabled={isLoading}
-          >
-            <Text style={styles.secondaryText}>NEW_USER? [REGISTER_ENTRY]</Text>
-          </Pressable>
+          <View style={styles.linkContainer}>
+            <Pressable
+              onPress={() => router.push("/(auth)/register")}
+              disabled={isLoading}
+              style={styles.secondaryLink}
+            >
+              <Text style={{ color: CYBER_THEME.primary, fontSize: 11 }}>
+                NEW USER? REGISTER
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("/(auth)/ForgotPassword")}
+              disabled={isLoading}
+              style={styles.secondaryLink}
+            >
+              <Text style={{ color: "#FF0055", fontSize: 11 }}>
+                FORGOT PASSWORD?
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </View>
     </KeyboardAvoidingView>
@@ -204,10 +216,15 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   buttonText: { color: "#000", fontWeight: "900", letterSpacing: 1 },
-  secondaryLink: {
-    marginTop: 20,
+  linkContainer: {
+    marginTop: 25,
+    flexDirection: "row",
+    justifyContent: "space-between",
     alignItems: "center",
     backgroundColor: "transparent",
   },
-  secondaryText: { color: "#444", fontSize: 11 },
+  secondaryLink: {
+    paddingVertical: 5,
+    backgroundColor: "transparent",
+  },
 });

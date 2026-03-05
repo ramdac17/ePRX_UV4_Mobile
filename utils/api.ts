@@ -1,18 +1,21 @@
 import axios from "axios";
-import { getToken } from "./authStorage";
+import { getToken, removeToken } from "./authStorage";
 
 /**
  * 🛰️ ePRX UV1 MISSION CONTROL: API CONFIGURATION
- * Priority:
- * 1. .env EXPO_PUBLIC_API_URL
- * 2. Production Railway URL
  */
 const RAILWAY_PRODUCTION =
   "https://eprxuv1-monorepo-production.up.railway.app/api";
-const API_URL = process.env.EXPO_PUBLIC_API_URL || RAILWAY_PRODUCTION;
+const LOCAL_DEV_URL = "http://192.168.0.152:3000/api";
 
-// Log target on initialization to verify the bridge
-console.log(`📡 SYSTEM_UPLINK_ESTABLISHED: [TARGET: ${API_URL}]`);
+const API_URL = __DEV__
+  ? LOCAL_DEV_URL
+  : process.env.EXPO_PUBLIC_API_URL || RAILWAY_PRODUCTION;
+
+// Log target once on initialization
+if (__DEV__) {
+  console.log(`📡 SYSTEM_UPLINK_ESTABLISHED: [TARGET: ${API_URL}]`);
+}
 
 const api = axios.create({
   baseURL: API_URL,
@@ -23,17 +26,28 @@ const api = axios.create({
   },
 });
 
-// ⬆️ REQUEST INTERCEPTOR: Injecting the Secure Vault Token
+/**
+ * ⬆️ REQUEST INTERCEPTOR
+ * Logic: Inject token only if it exists.
+ * Silence logs for known public endpoints to reduce console noise.
+ */
 api.interceptors.request.use(async (config) => {
   try {
     const token = await getToken();
+    const isPublicRoute =
+      config.url?.includes("/auth/login") ||
+      config.url?.includes("/auth/register");
 
-    // Debugging only: confirm token exists before uplink
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log("🔑 AUTH_GATE: TOKEN_INJECTED");
+      // Only log token injection in Dev mode for non-public routes
+      if (__DEV__ && !isPublicRoute)
+        console.log("🔑 AUTH_GATE: TOKEN_INJECTED");
     } else {
-      console.log("🔑 AUTH_GATE: NO_TOKEN_FOUND (PUBLIC_ACCESS)");
+      // Only log "No Token" if we are trying to hit a protected resource
+      if (__DEV__ && !isPublicRoute) {
+        console.log("🚶 PUBLIC_ACCESS: No token present for this request.");
+      }
     }
   } catch (e) {
     console.error("🔴 TOKEN_RETRIEVAL_ERROR", e);
@@ -41,17 +55,41 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// ⬇️ RESPONSE INTERCEPTOR: Handling Network Transitions (WiFi -> Data)
+/**
+ * ⬇️ RESPONSE INTERCEPTOR
+ * Logic: Handle 401s gracefully. If a session is dead, we wipe the local token
+ * but stop the "Warn/Error" loop once the user is unauthenticated.
+ */
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
+    const originalRequest = error.config;
+
+    // 1. Handle Network/Timeout Errors
     if (!error.response) {
-      // This usually triggers during Network/DNS failures on mobile data
-      console.error("📡 UPLINK_LOST: NETWORK_ERROR_OR_TIMEOUT");
-    } else if (error.response.status === 401) {
-      console.warn("🛡️ SESSION_EXPIRED: REDIRECTING_TO_AUTH");
-      // Handle auto-logout logic here if needed
+      console.error("📡 UPLINK_LOST: SERVER_UNREACHABLE");
+      return Promise.reject(error);
     }
+
+    // 2. Handle 401 Unauthorized (Expired/Invalid Token)
+    if (error.response.status === 401) {
+      const isPublicRoute =
+        originalRequest.url?.includes("/auth/login") ||
+        originalRequest.url?.includes("/auth/register");
+
+      // Only warn and trigger redirect logic if it's NOT a login attempt failing
+      if (!isPublicRoute) {
+        console.warn("🛡️ SESSION_INVALID: TERMINATING_UPLINK");
+        await removeToken(); // Ensure local storage is wiped
+
+        // Here you could trigger a global event for navigation if needed
+      } else {
+        // Log specific login failures quietly
+        console.log("🔐 AUTH_DENIED: Credentials invalid.");
+      }
+    }
+
+    // 3. Suppress redundant Axios logs for expected 401s
     return Promise.reject(error);
   },
 );

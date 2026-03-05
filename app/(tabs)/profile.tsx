@@ -7,28 +7,27 @@ import {
   Image,
   Alert,
   ScrollView,
-  ActivityIndicator, // Added for feedback
+  ActivityIndicator,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { CYBER_THEME } from "@/constants/Colors";
 import { User, Camera, LogOut, Lock, ChevronRight } from "lucide-react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import { removeToken } from "@/utils/authStorage";
 import { useRouter } from "expo-router";
 import api from "@/utils/api";
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
-  const [uploading, setUploading] = useState(false); // New state
+  const [uploading, setUploading] = useState(false);
   const router = useRouter();
-
-  const API_URL = process.env.EXPO_PUBLIC_API_URL || "";
-  const BASE_IMAGE_URL = API_URL.replace("/api", "");
+  const BASE_URL = api.defaults.baseURL?.replace("/api", "") || "";
 
   useEffect(() => {
     fetchProfile();
   }, []);
 
   const fetchProfile = async () => {
+    if (!api.defaults.headers.common["Authorization"]) return;
     try {
       const res = await api.get("/auth/profile");
       setUser(res.data);
@@ -38,36 +37,35 @@ export default function ProfileScreen() {
   };
 
   const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("PERMISSION_DENIED", "Access to gallery required.");
+      return;
+    }
+
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images, // Updated to use enum
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.5,
+      quality: 0.2,
     });
 
-    if (!result.canceled) {
+    if (!result.canceled && result.assets[0]) {
       setUploading(true);
-      const uri = result.assets[0].uri;
-
-      // Fix for some Android/iOS differences in naming
-      const fileName = uri.split("/").pop() || "avatar.jpg";
-
+      const { uri } = result.assets[0];
       const formData = new FormData();
-      formData.append("file", {
-        uri,
-        name: fileName,
-        type: "image/jpeg",
-      } as any);
+      // @ts-ignore
+      formData.append("file", { uri, name: "avatar.jpg", type: "image/jpeg" });
 
       try {
         await api.post("/auth/upload-avatar", formData, {
           headers: { "Content-Type": "multipart/form-data" },
+          timeout: 30000,
         });
-        await fetchProfile(); // Wait for profile refresh
+        await fetchProfile();
         Alert.alert("SUCCESS", "IDENTITY_IMAGE_UPDATED");
-      } catch (e) {
-        Alert.alert("ERROR", "UPLINK_FAILED");
-        console.log("UPLOAD_ERROR", e);
+      } catch (e: any) {
+        Alert.alert("ERROR", "UPLINK_FAILED: Server rejected payload.");
       } finally {
         setUploading(false);
       }
@@ -75,47 +73,39 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    try {
-      console.log("INITIATING_TERMINATION_SEQUENCE...");
-
-      // 1. SURGICAL REMOVAL (Don't use .clear() here)
-      // Only remove the specific keys you created
-      await AsyncStorage.removeItem("userToken");
-
-      // 2. CLEAR API STATE
-      delete api.defaults.headers.common["Authorization"];
-      if (setUser) setUser(null);
-
-      // 3. NAVIGATION OVERRIDE
-      // We use a timeout of 0 to let the state settle before switching screens
-      setTimeout(() => {
-        router.replace("/login");
-      }, 0);
-    } catch (e) {
-      // If removeItem fails, it's usually because it's already gone
-      console.error("LOGOUT_FAILURE_RECOVERING...", e);
-      router.replace("/login"); // Navigate anyway
-    }
+    Alert.alert("TERMINATE_SESSION", "Confirm logout protocol?", [
+      { text: "CANCEL", style: "cancel" },
+      {
+        text: "CONFIRM",
+        style: "destructive",
+        onPress: async () => {
+          // 🚀 Sequence: Redirect -> Wipe -> Clear
+          router.replace("/login");
+          await removeToken();
+          delete api.defaults.headers.common["Authorization"];
+          setUser(null);
+        },
+      },
+    ]);
   };
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={styles.title}>OPERATIVE_PROFILE</Text>
+        <Text style={styles.title}>ELITE PROFILE</Text>
       </View>
 
-      {/* AVATAR SECTION */}
       <View style={styles.avatarSection}>
         <TouchableOpacity
           onPress={pickImage}
           style={styles.avatarWrapper}
-          disabled={uploading} // Prevent double uploads
+          disabled={uploading}
         >
           {user?.image ? (
             <Image
               source={{
-                uri: `${BASE_IMAGE_URL}${user.image}?t=${new Date().getTime()}`,
-              }} // Cache busting
+                uri: `${BASE_URL}${user.image.startsWith("/") ? "" : "/"}${user.image}?t=${new Date().getTime()}`,
+              }}
               style={styles.avatar}
             />
           ) : (
@@ -123,7 +113,6 @@ export default function ProfileScreen() {
               <User size={40} color={CYBER_THEME.primary} />
             </View>
           )}
-
           <View style={styles.cameraIcon}>
             {uploading ? (
               <ActivityIndicator size="small" color="#000" />
@@ -132,17 +121,12 @@ export default function ProfileScreen() {
             )}
           </View>
         </TouchableOpacity>
-
         <Text style={styles.userName}>
-          {user?.firstName?.toUpperCase() || "UNKNOWN"}_
-          {user?.lastName?.toUpperCase() || "OPERATIVE"}
+          {user?.firstName?.toUpperCase()} {user?.lastName?.toUpperCase()}
         </Text>
-        <Text style={styles.userEmail}>
-          {user?.email?.toLowerCase() || "no_email_found"}
-        </Text>
+        <Text style={styles.userEmail}>{user?.email?.toLowerCase()}</Text>
       </View>
 
-      {/* ACTIONS SECTION */}
       <View style={styles.menuSection}>
         <TouchableOpacity
           style={styles.menuItem}
@@ -152,20 +136,17 @@ export default function ProfileScreen() {
         >
           <View style={styles.menuLabel}>
             <Lock size={18} color={CYBER_THEME.primary} />
-            <Text style={styles.menuText}>RESET_PASSWORD</Text>
+            <Text style={styles.menuText}>RESET PASSWORD</Text>
           </View>
           <ChevronRight size={16} color="#333" />
         </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.menuItem, { borderBottomWidth: 0 }]}
           onPress={handleLogout}
         >
           <View style={styles.menuLabel}>
             <LogOut size={18} color="#ff4444" />
-            <Text style={[styles.menuText, { color: "#ff4444" }]}>
-              TERMINATE_SESSION
-            </Text>
+            <Text style={[styles.menuText, { color: "#ff4444" }]}>LOGOUT</Text>
           </View>
           <ChevronRight size={16} color="#333" />
         </TouchableOpacity>

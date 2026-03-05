@@ -123,7 +123,7 @@ export default function StartActivity() {
     <View style={styles.container}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
         <ArrowLeft size={20} color={CYBER_THEME.primary} />
-        <Text style={styles.backText}>ABORT_MISSION</Text>
+        <Text style={styles.backText}>CANCEL ACTIVITY</Text>
       </TouchableOpacity>
 
       <View style={styles.content}>
@@ -171,7 +171,7 @@ export default function StartActivity() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>SAVE_ACTIVITY_LOG</Text>
+            <Text style={styles.modalTitle}>SAVE ACTIVITY LOG</Text>
             {/*  
             <View style={styles.mapContainer}>
               {coords.length > 0 ? (
@@ -204,7 +204,7 @@ export default function StartActivity() {
 
             <TextInput
               style={styles.input}
-              placeholder="SEQUENCE_TITLE"
+              placeholder="ACTIVITY TITLE"
               placeholderTextColor="#444"
               value={title}
               onChangeText={setTitle}
@@ -234,13 +234,13 @@ export default function StartActivity() {
               disabled={isSyncing}
             >
               <Text style={styles.saveBtnText}>
-                {isSyncing ? "SYNCING_WITH_CORE..." : "UPLOAD_TO_CORE"}
+                {isSyncing ? "SYNCING WITH CORE..." : "UPLOAD TO HISTORY"}
               </Text>
             </TouchableOpacity>
 
             {!isSyncing && (
               <TouchableOpacity onPress={() => setShowModal(false)}>
-                <Text style={styles.cancelText}>CANCEL_DISCARD</Text>
+                <Text style={styles.cancelText}>CANCEL DISCARD</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -249,8 +249,6 @@ export default function StartActivity() {
     </View>
   );
 }
-
-// ... (mapStyle and styles objects remain the same as your previous snippet)
 
 const mapStyle = [
   { elementType: "geometry", stylers: [{ color: "#212121" }] },

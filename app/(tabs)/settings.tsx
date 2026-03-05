@@ -14,17 +14,17 @@ export default function SettingsScreen() {
   const settingsOptions = [
     {
       id: "1",
-      label: "SECURITY_PROTOCOLS",
+      label: "SECURITY PROTOCOLS",
       icon: <Shield size={18} color={CYBER_THEME.primary} />,
     },
     {
       id: "2",
-      label: "SIGNAL_NOTIFICATIONS",
+      label: "SIGNAL NOTIFICATIONS",
       icon: <Bell size={18} color={CYBER_THEME.primary} />,
     },
     {
       id: "3",
-      label: "CORE_SYSTEM_UPDATE",
+      label: "CORE SYSTEM UPDATE",
       icon: <Cpu size={18} color={CYBER_THEME.primary} />,
     },
   ];
@@ -33,7 +33,7 @@ export default function SettingsScreen() {
     <ScrollView style={styles.container}>
       <View style={styles.header}>
         <Cog color={CYBER_THEME.primary} size={32} />
-        <Text style={styles.title}>SYSTEM_CONFIGURATION</Text>
+        <Text style={styles.title}>SYSTEM CONFIGURATION</Text>
       </View>
 
       <View style={styles.section}>
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
       </View>
 
       <View style={styles.footer}>
-        <Text style={styles.footerText}>ePRX_UV1 // TERMINAL_V1.0.4</Text>
+        <Text style={styles.footerText}>ePRX_UV // TERMINAL_V1.0.0</Text>
       </View>
     </ScrollView>
   );

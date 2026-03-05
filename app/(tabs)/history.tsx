@@ -43,19 +43,24 @@ export default function ActivityHistoryScreen() {
   }, []);
 
   const renderItem = ({ item }: { item: any }) => {
-    // Helper to prevent Date crashes
     const missionDate = item.createdAt ? new Date(item.createdAt) : new Date();
+
+    /**
+     * 🛰️ NAVIGATION_UPLINK
+     * Ensure your file is at: app/activity-detail/[id].tsx
+     */
+    const handlePress = () => {
+      if (!item.id) return;
+
+      // Using the template string method is often more reliable in Expo Router v3+
+      router.push(`/activity-detail/${item.id}`);
+    };
 
     return (
       <TouchableOpacity
         style={styles.card}
         activeOpacity={0.7}
-        onPress={() =>
-          router.push({
-            pathname: "/activity-detail/[id]",
-            params: { id: item.id },
-          } as any)
-        }
+        onPress={handlePress}
       >
         <View style={styles.cardHeader}>
           <View>
@@ -64,7 +69,7 @@ export default function ActivityHistoryScreen() {
               {missionDate.toLocaleTimeString([], {
                 hour: "2-digit",
                 minute: "2-digit",
-                hour12: false, // Keeping it military style for the theme
+                hour12: false,
               })}
             </Text>
             <Text style={styles.titleText}>
@@ -98,21 +103,20 @@ export default function ActivityHistoryScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header Section */}
       <View style={styles.header}>
         <Activity color={CYBER_THEME.primary} size={20} />
-        <Text style={styles.headerTitle}>MISSION_LOGS</Text>
+        <Text style={styles.headerTitle}>HISTORY LOGS</Text>
       </View>
 
       {loading ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator color={CYBER_THEME.primary} size="large" />
-          <Text style={styles.loadingText}>FETCHING_LOGS...</Text>
+          <Text style={styles.loadingText}>FETCHING LOGS...</Text>
         </View>
       ) : activities.length === 0 ? (
         <View style={styles.emptyState}>
           <Inbox color="#222" size={48} style={{ marginBottom: 10 }} />
-          <Text style={styles.emptyText}>NO_DATA_FOUND. START_TRAINING.</Text>
+          <Text style={styles.emptyText}>NO DATA FOUND. START TRAINING.</Text>
         </View>
       ) : (
         <FlatList
@@ -141,7 +145,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 40, // More space for SafeArea
+    paddingTop: 40,
     paddingBottom: 15,
     gap: 10,
     borderBottomWidth: 1,
@@ -156,7 +160,7 @@ const styles = StyleSheet.create({
   list: { flex: 1 },
   listContent: {
     padding: 20,
-    paddingBottom: 120, // Bottom padding for tab bar clearance
+    paddingBottom: 120,
   },
   card: {
     backgroundColor: "#0a0a0a",
