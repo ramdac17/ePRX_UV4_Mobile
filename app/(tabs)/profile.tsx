@@ -15,11 +15,14 @@ import { User, Camera, LogOut, Lock, ChevronRight } from "lucide-react-native";
 import { removeToken } from "@/utils/authStorage";
 import { useRouter } from "expo-router";
 import api from "@/utils/api";
+import { getToken } from "@/utils/authStorage"; // Make sure to import this for direct token access in the upload function
 
 export default function ProfileScreen() {
   const [user, setUser] = useState<any>(null);
   const [uploading, setUploading] = useState(false);
   const router = useRouter();
+
+  // 🛰️ ePRX_UV1_UPLINK_CONFIG
   const BASE_URL = api.defaults.baseURL?.replace("/api", "") || "";
 
   useEffect(() => {
@@ -27,13 +30,31 @@ export default function ProfileScreen() {
   }, []);
 
   const fetchProfile = async () => {
-    if (!api.defaults.headers.common["Authorization"]) return;
     try {
       const res = await api.get("/auth/profile");
       setUser(res.data);
     } catch (e) {
-      console.error("PROFILE_SYNC_ERROR", e);
+      console.error("🔴 PROFILE_SYNC_ERROR:", e);
     }
+  };
+
+  /**
+   * 🖼️ HYBRID_IMAGE_RESOLVER
+   * Handles Cloudinary (HTTPS) vs Local Legacy Uploads
+   */
+  const getAvatarSource = () => {
+    if (!user?.image) return null;
+
+    // If it's a Cloudinary URL, use it directly
+    if (user.image.startsWith("http")) {
+      return { uri: user.image };
+    }
+
+    // Fallback for legacy local files
+    const cleanPath = user.image.startsWith("/")
+      ? user.image
+      : `/${user.image}`;
+    return { uri: `${BASE_URL}${cleanPath}?t=${new Date().getTime()}` };
   };
 
   const pickImage = async () => {
@@ -47,25 +68,90 @@ export default function ProfileScreen() {
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [1, 1],
-      quality: 0.2,
+      quality: 0.5,
     });
 
     if (!result.canceled && result.assets[0]) {
       setUploading(true);
-      const { uri } = result.assets[0];
+      const asset = result.assets[0];
+
+      // 🔍 DEBUG_LOGS: Let's see what the hardware is giving us
+
+      console.log("📂 RAW_ASSET_URI:", asset.uri);
+      console.log("📂 ASSET_MIME_TYPE:", asset.type || "unknown");
+      console.log("📂 ASSET_FILE_NAME:", asset.fileName || "unknown");
+
+      const uri = asset.uri;
+      const fileExtension = uri.split(".").pop() || "jpeg";
+      const fileName = `avatar_${Date.now()}.${fileExtension}`;
+      const fileType = `image/${fileExtension === "jpg" ? "jpeg" : fileExtension}`;
+
       const formData = new FormData();
-      // @ts-ignore
-      formData.append("file", { uri, name: "avatar.jpg", type: "image/jpeg" });
+
+      // 🛠️ THE REACT NATIVE ANDROID FIX
+      // We wrap this in an object that React Native's fetch/axios
+      // recognizes as a "File" to be converted into a multi-part stream.
+
+      const filePayload = {
+        uri: uri, // Keep the file:/// for Android
+        name: fileName,
+        type: fileType,
+      };
+
+      console.log("🛰️ FINAL_UPLINK_URI:", filePayload);
+      formData.append("file", filePayload as any);
 
       try {
-        await api.post("/auth/upload-avatar", formData, {
-          headers: { "Content-Type": "multipart/form-data" },
-          timeout: 30000,
-        });
+        console.log("📡 TESTING_CONNECTION_TO:", api.defaults.baseURL);
+        await api.get("/auth/test-cloudinary");
+        console.log("✅ SERVER_REACHABLE");
+      } catch (connError: any) {
+        console.error("❌ SERVER_UNREACHABLE:", connError.message);
+        Alert.alert("OFFLINE", "The app cannot communicate with the server.");
+        setUploading(false);
+        return;
+      }
+
+      try {
+        // 1. Get the token directly from your storage utility
+        // (Don't rely on the axios defaults, it's safer to pull fresh)
+
+        const token = await getToken();
+
+        if (!token) {
+          Alert.alert("SESSION_EXPIRED", "Please log in again.");
+          return;
+        }
+
+        // 2. Use Native Fetch with clean headers
+        const response = await fetch(
+          `${api.defaults.baseURL}/auth/upload-avatar`,
+          {
+            method: "POST",
+            body: formData,
+            headers: {
+              Accept: "application/json",
+              // Ensure 'Bearer ' is prefixed correctly
+              Authorization: `Bearer ${token.trim()}`,
+            },
+          },
+        );
+
+        const result = await response.json();
+
+        if (response.status === 401) {
+          throw new Error("SESSION_INVALID_OR_EXPIRED");
+        }
+
+        if (!response.ok) {
+          throw new Error(result.message || "UPLINK_FAILED");
+        }
+
         await fetchProfile();
-        Alert.alert("SUCCESS", "IDENTITY_IMAGE_UPDATED");
-      } catch (e: any) {
-        Alert.alert("ERROR", "UPLINK_FAILED: Server rejected payload.");
+        Alert.alert("SUCCESS", "IDENTITY_IMAGE_SYNCED_TO_CLOUD");
+      } catch (uploadError: any) {
+        console.error("🔴 UPLOAD_ERROR:", uploadError.message);
+        Alert.alert("UPLOAD_FAILED", uploadError.message);
       } finally {
         setUploading(false);
       }
@@ -79,7 +165,6 @@ export default function ProfileScreen() {
         text: "CONFIRM",
         style: "destructive",
         onPress: async () => {
-          // 🚀 Sequence: Redirect -> Wipe -> Clear
           router.replace("/login");
           await removeToken();
           delete api.defaults.headers.common["Authorization"];
@@ -103,9 +188,7 @@ export default function ProfileScreen() {
         >
           {user?.image ? (
             <Image
-              source={{
-                uri: `${BASE_URL}${user.image.startsWith("/") ? "" : "/"}${user.image}?t=${new Date().getTime()}`,
-              }}
+              source={getAvatarSource() || { uri: "" }}
               style={styles.avatar}
             />
           ) : (
@@ -121,10 +204,15 @@ export default function ProfileScreen() {
             )}
           </View>
         </TouchableOpacity>
+
         <Text style={styles.userName}>
-          {user?.firstName?.toUpperCase()} {user?.lastName?.toUpperCase()}
+          {user
+            ? `${user.firstName || ""} ${user.lastName || ""}`.toUpperCase()
+            : "SYNCING..."}
         </Text>
-        <Text style={styles.userEmail}>{user?.email?.toLowerCase()}</Text>
+        <Text style={styles.userEmail}>
+          {user?.email?.toLowerCase() || "STATION_AGENT"}
+        </Text>
       </View>
 
       <View style={styles.menuSection}>
@@ -140,6 +228,7 @@ export default function ProfileScreen() {
           </View>
           <ChevronRight size={16} color="#333" />
         </TouchableOpacity>
+
         <TouchableOpacity
           style={[styles.menuItem, { borderBottomWidth: 0 }]}
           onPress={handleLogout}

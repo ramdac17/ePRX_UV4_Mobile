@@ -23,7 +23,7 @@ export default function ActivityHistoryScreen() {
   const loadHistory = async () => {
     try {
       const res = await api.get("/activities");
-      console.log("📡 HISTORY_DATA_RECEIVED:", res.data.length, "records");
+      // console.log("📡 HISTORY_DATA_RECEIVED:", res.data.length, "records");
       setActivities(res.data);
     } catch (error) {
       console.error("🔴 HISTORY_FETCH_ERROR", error);

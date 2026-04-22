@@ -1,10 +1,11 @@
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
-const TOKEN_KEY = 'eprx_auth_token';
+const TOKEN_KEY = "eprx_auth_token";
 
 export const saveToken = async (token: string) => {
-  if (Platform.OS === 'web') {
+  console.log("DEBUG_TOKEN_UPLINK:", `Bearer ${token}`);
+  if (Platform.OS === "web") {
     localStorage.setItem(TOKEN_KEY, token);
   } else {
     await SecureStore.setItemAsync(TOKEN_KEY, token);
@@ -12,18 +13,18 @@ export const saveToken = async (token: string) => {
 };
 
 export const getToken = async () => {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     return localStorage.getItem(TOKEN_KEY);
   }
   // Native check
   const isAvailable = await SecureStore.isAvailableAsync();
   if (!isAvailable) return null;
-  
+
   return await SecureStore.getItemAsync(TOKEN_KEY);
 };
 
 export const deleteToken = async () => {
-  if (Platform.OS === 'web') {
+  if (Platform.OS === "web") {
     localStorage.removeItem(TOKEN_KEY);
   } else {
     await SecureStore.deleteItemAsync(TOKEN_KEY);

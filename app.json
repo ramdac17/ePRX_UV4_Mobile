@@ -16,10 +16,15 @@
     },
     "android": {
       "package": "com.eprx.uv1",
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM"
+        }
+      },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
-        "ACCESS_BACKGROUND_LOCATION", 
+        "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "RECORD_AUDIO"
       ],
@@ -31,6 +36,9 @@
     "ios": {
       "bundleIdentifier": "com.eprx.uv1",
       "supportsTablet": true,
+      "config": {
+        "googleMapsApiKey": "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM"
+      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "ePRX UV1 needs location access to track your missions and display them on the map.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "ePRX UV1 tracks your mission progress even when the device is locked.",
@@ -46,15 +54,15 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow ePRX UV1 to access your photos to upload documentation.",
-          "cameraPermission": "Allow ePRX UV1 to use your camera to capture data."
+          "cameraPermission": "Allow ePRX UV1 to use your camera to capture data.",
+          "photosPermission": "Allow ePRX UV1 to access your photos to upload documentation."
         }
       ],
       [
         "expo-location",
         {
-          "locationAlwaysPermission": "Allow ePRX UV1 to access your location even when the app is in the background.",
-          "isAndroidBackgroundLocationEnabled": true
+          "isAndroidBackgroundLocationEnabled": true,
+          "locationAlwaysPermission": "Allow ePRX UV1 to access your location even when the app is in the background."
         }
       ]
     ],

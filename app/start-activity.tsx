@@ -14,15 +14,16 @@ import { getDistance } from "geolib";
 import api from "@/utils/api";
 import { CYBER_THEME } from "@/constants/Colors";
 import { Play, Pause, Square, ArrowLeft } from "lucide-react-native";
-// import MapView, { Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Polyline, PROVIDER_GOOGLE } from "react-native-maps";
+import Share from "react-native-share";
+
+const MAP_PROVIDER = PROVIDER_GOOGLE;
 
 export default function StartActivity() {
   const router = useRouter();
   const [isActive, setIsActive] = useState(false);
   const [seconds, setSeconds] = useState(0);
-  const [isSyncing, setIsSyncing] = useState(false); // Correctly placed inside component
-
-  // Tracking State
+  const [isSyncing, setIsSyncing] = useState(false);
   const [distance, setDistance] = useState(0);
   const [elevation, setElevation] = useState(0);
   const [coords, setCoords] = useState<any[]>([]);
@@ -30,11 +31,11 @@ export default function StartActivity() {
   const [title, setTitle] = useState("");
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mapRef = useRef<MapView | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(
     null,
   );
 
-  // 1. Permissions and Setup
   useEffect(() => {
     (async () => {
       let { status } = await Location.requestForegroundPermissionsAsync();
@@ -45,7 +46,6 @@ export default function StartActivity() {
     return () => stopTracking();
   }, []);
 
-  // 2. Timer & Location Toggle
   useEffect(() => {
     if (isActive) {
       startTracking();
@@ -94,26 +94,61 @@ export default function StartActivity() {
       return Alert.alert("INPUT_REQUIRED", "Please name this sequence.");
 
     setIsSyncing(true);
+    let base64Map: string | null = null;
+
+    // 1. Capture Snapshot
+    if (mapRef.current) {
+      try {
+        const snapshot = await mapRef.current.takeSnapshot({
+          format: "jpg",
+          quality: 0.5,
+          result: "base64",
+        });
+        base64Map = `data:image/jpg;base64,${snapshot}`;
+      } catch (err) {
+        console.error("📸 SNAPSHOT_FAILED:", err);
+      }
+    }
+
+    // 2. Prepare Payload
     const payload = {
       title,
-      distance: (distance / 1000).toFixed(2),
+      distance: parseFloat((distance / 1000).toFixed(2)),
       duration: seconds,
       pace:
         seconds > 0 && distance > 0
           ? (seconds / 60 / (distance / 1000)).toFixed(2)
-          : "0",
-      elevation: elevation.toFixed(1),
-      coordinates: JSON.stringify(coords),
+          : "0:00",
+      elevation: parseFloat(elevation.toFixed(1)),
+      coordinates: coords,
+      mapImageUrl: base64Map,
     };
 
     try {
-      // Cyber-aesthetic delay
-      await new Promise((resolve) => setTimeout(resolve, 1200));
-      await api.post("/activities", payload);
-      setShowModal(false);
-      router.replace("/(tabs)");
-    } catch (e) {
-      Alert.alert("SYNC_ERROR", "DATA_TRANSMISSION_FAILED");
+      // 3. API Call
+      const response = await api.post("/activities", payload);
+
+      if (response.status === 201 || response.status === 200) {
+        const shareUrl = response.data.shareUrl;
+        setShowModal(false);
+
+        // 4. Share with Cache Buster
+        if (shareUrl) {
+          try {
+            const freshShareUrl = `${shareUrl}${shareUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
+            await Share.open({
+              url: freshShareUrl,
+              failOnCancel: false,
+            });
+          } catch (shareError) {
+            console.log("Share dismissed:", shareError);
+          }
+        }
+        router.replace("/(tabs)");
+      }
+    } catch (e: any) {
+      console.error("SYNC_ERROR:", e.message);
+      Alert.alert("SYNC ERROR", "DATA TRANSMISSION FAILED");
     } finally {
       setIsSyncing(false);
     }
@@ -172,12 +207,12 @@ export default function StartActivity() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>SAVE ACTIVITY LOG</Text>
-            {/*  
             <View style={styles.mapContainer}>
               {coords.length > 0 ? (
                 <MapView
+                  ref={mapRef}
                   style={styles.map}
-                  provider={PROVIDER_GOOGLE}
+                  provider={MAP_PROVIDER}
                   customMapStyle={mapStyle}
                   initialRegion={{
                     latitude: coords[0].latitude,
@@ -190,8 +225,8 @@ export default function StartActivity() {
                 >
                   <Polyline
                     coordinates={coords}
+                    strokeWidth={4}
                     strokeColor={CYBER_THEME.primary}
-                    strokeWidth={3}
                   />
                 </MapView>
               ) : (
@@ -200,7 +235,7 @@ export default function StartActivity() {
                 </View>
               )}
               <View style={styles.mapOverlayFrame} />
-            </View> */}
+            </View>
 
             <TextInput
               style={styles.input}
@@ -223,7 +258,7 @@ export default function StartActivity() {
                 <Text style={styles.miniValue}>
                   {seconds > 0 && distance > 0
                     ? (seconds / 60 / (distance / 1000)).toFixed(2)
-                    : "0"}
+                    : "0:00"}
                 </Text>
               </View>
             </View>
@@ -234,7 +269,7 @@ export default function StartActivity() {
               disabled={isSyncing}
             >
               <Text style={styles.saveBtnText}>
-                {isSyncing ? "SYNCING WITH CORE..." : "UPLOAD TO HISTORY"}
+                {isSyncing ? "SYNCING..." : "UPLOAD TO HISTORY"}
               </Text>
             </TouchableOpacity>
 
@@ -249,22 +284,6 @@ export default function StartActivity() {
     </View>
   );
 }
-
-const mapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#303030" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#000000" }],
-  },
-];
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000", padding: 20, paddingTop: 60 },
@@ -389,3 +408,19 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
 });
+
+const mapStyle = [
+  { elementType: "geometry", stylers: [{ color: "#212121" }] },
+  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
+  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
+  {
+    featureType: "road",
+    elementType: "geometry",
+    stylers: [{ color: "#303030" }],
+  },
+  {
+    featureType: "water",
+    elementType: "geometry",
+    stylers: [{ color: "#000000" }],
+  },
+];

@@ -7,6 +7,7 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image, // ✅ Added Image component
 } from "react-native";
 import { Text, View } from "@/components/Themed";
 import { CYBER_THEME } from "@/constants/Colors";
@@ -18,7 +19,6 @@ export default function LoginScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-
   const router = useRouter();
 
   const handleLogin = async () => {
@@ -34,25 +34,21 @@ export default function LoginScreen() {
         password,
       });
 
-      const token = response.data.access_token;
+      const token = response.data.access_token || response.data.accessToken;
 
-      if (token && typeof token === "string") {
-        // SECURE UPLINK: Store in SecureStore
+      if (token && typeof token === "string" && token.length > 20) {
         await storeToken(token);
-
-        // Immediate Header Injection for current session
         api.defaults.headers.common["Authorization"] = `Bearer ${token}`;
 
-        console.log("📡 ePRX_UV1_SESSION_ESTABLISHED");
-
-        // Navigate to main interface
-        router.replace("/(tabs)");
+        setTimeout(() => {
+          router.replace("/(tabs)");
+        }, 100);
       } else {
         throw new Error("INVALID_TOKEN_FORMAT");
       }
     } catch (error: any) {
-      console.error("🔴 AUTH_ERROR:", error.response?.data || error.message);
-      const msg = error.response?.data?.message || "UPLINK_ERROR";
+      const msg =
+        error.response?.data?.message || "UPLINK_FAILURE: CHECK_COORDS";
       Alert.alert("ACCESS_DENIED", msg.toUpperCase());
     } finally {
       setIsLoading(false);
@@ -65,13 +61,19 @@ export default function LoginScreen() {
       style={styles.container}
     >
       <View style={styles.background}>
-        <View style={styles.glowTop} />
-        <View style={styles.glowBottom} />
-
         <View style={styles.header}>
-          <Text style={styles.logoText}>
-            ePRX <Text style={{ color: CYBER_THEME.primary }}>UV1</Text>
-          </Text>
+          {/* ✅ BRAND_UPLINK: Logo and Text Container */}
+          <View style={styles.logoRow}>
+            <Image
+              source={require("@/assets/images/eprx-circle.jpg")} // Make sure this path is correct
+              style={styles.brandLogo}
+              resizeMode="contain"
+            />
+            <Text style={styles.logoText}>
+              ePRX <Text style={{ color: CYBER_THEME.primary }}>UV1</Text>
+            </Text>
+          </View>
+
           <Text style={styles.subtitle}>
             {isLoading ? "VERIFYING_CREDENTIALS..." : "AUTHENTICATION REQUIRED"}
           </Text>
@@ -151,38 +153,28 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: "transparent",
   },
-  glowTop: {
-    position: "absolute",
-    top: -100,
-    left: -50,
-    width: 300,
-    height: 300,
-    backgroundColor: CYBER_THEME.primary,
-    borderRadius: 150,
-    opacity: 0.1,
-  },
-  glowBottom: {
-    position: "absolute",
-    bottom: -120,
-    right: -80,
-    width: 300,
-    height: 300,
-    backgroundColor: "#FF00FF",
-    borderRadius: 150,
-    opacity: 0.1,
-  },
+
   header: { backgroundColor: "transparent", marginBottom: 40 },
+  logoRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "transparent",
+    gap: 10,
+  },
+  brandLogo: { width: 100, height: 100 }, // Slightly larger for better pulse visibility
   logoText: {
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: "900",
-    color: "#fff",
+    color: CYBER_THEME.primary,
     letterSpacing: -1,
   },
   subtitle: {
     color: CYBER_THEME.primary,
     fontSize: 12,
     letterSpacing: 2,
-    marginTop: 5,
+    marginTop: 1,
+    marginBottom: -25,
+    marginLeft: 5,
   },
   glassCard: {
     backgroundColor: "#0a0a0a",
@@ -223,8 +215,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "transparent",
   },
-  secondaryLink: {
-    paddingVertical: 5,
-    backgroundColor: "transparent",
-  },
+  secondaryLink: { paddingVertical: 5, backgroundColor: "transparent" },
 });

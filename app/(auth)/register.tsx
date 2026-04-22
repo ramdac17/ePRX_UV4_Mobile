@@ -171,6 +171,18 @@ export default function RegisterScreen() {
                   value={password}
                   onChangeText={setPassword}
                 />
+
+                <Text style={styles.label}>MOBILE NUMER</Text>
+                <TextInput
+                  style={styles.input}
+                  secureTextEntry
+                  onChangeText={setmobile}
+                  keyboardType="phone-pad"
+                  value={mobile}
+                  placeholder="09xx xxxx xxxx"
+                  placeholderTextColor="#333"
+                />
+
                 <Pressable
                   onPress={handleRegister}
                   disabled={isLoading}
