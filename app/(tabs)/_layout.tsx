@@ -25,7 +25,6 @@ export default function TabLayout() {
         },
       }}
     >
-      {/* 🏠 CORE DASHBOARD */}
       <Tabs.Screen
         name="index"
         options={{
@@ -34,7 +33,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 📜 MISSION LOGS */}
       <Tabs.Screen
         name="history"
         options={{
@@ -43,16 +41,14 @@ export default function TabLayout() {
         }}
       />
 
-      {/* 🕵️ INVISIBLE DETAIL SCREEN (Ghost Route) */}
-      {/* Name MUST match the filename in your directory exactly */}
+      {/* Hidden detail route */}
       <Tabs.Screen
         name="activity-detail/[id]"
         options={{
-          href: null, // This hides it from the bottom bar
+          href: null,
         }}
       />
 
-      {/* 👤 OPERATIVE IDENTITY */}
       <Tabs.Screen
         name="profile"
         options={{
@@ -61,7 +57,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* ⚙️ SYSTEM CONFIG */}
       <Tabs.Screen
         name="settings"
         options={{

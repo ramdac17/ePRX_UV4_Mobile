@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  useMemo,
+} from "react";
 import {
   StyleSheet,
   View,
@@ -7,20 +13,71 @@ import {
   Modal,
   TextInput,
   Alert,
+  Dimensions,
+  Image,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as Location from "expo-location";
+import notifee, {
+  AndroidColor,
+  AndroidImportance,
+} from "@notifee/react-native";
 import { getDistance } from "geolib";
 import api from "@/utils/api";
 import { CYBER_THEME } from "@/constants/Colors";
-import { Play, Pause, Square, ArrowLeft } from "lucide-react-native";
-import MapView, { Polyline, PROVIDER_GOOGLE } from "react-native-maps";
-import Share from "react-native-share";
+import {
+  Play,
+  Pause,
+  Square,
+  ArrowLeft,
+  Ruler,
+  Clock,
+  Zap,
+} from "lucide-react-native";
+import { useKeepAwake } from "expo-keep-awake";
 
-const MAP_PROVIDER = PROVIDER_GOOGLE;
+const { width } = Dimensions.get("window");
+const GOOGLE_MAPS_API_KEY = "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM";
+
+// ===============================
+// STATIC MAP BUILDER (From Details)
+// ===============================
+const buildStaticMapUrl = (coords: any[]) => {
+  if (!coords?.length) return null;
+  const start = coords[0];
+  const end = coords[coords.length - 1];
+  const path = coords.map((p) => `${p.latitude},${p.longitude}`).join("|");
+  const base = "https://maps.googleapis.com/maps/api/staticmap";
+
+  const styles = [
+    "element:geometry|color:0x212121",
+    "element:labels.icon|visibility:off",
+    "element:labels.text.fill|color:0x757575",
+    "element:labels.text.stroke|color:0x212121",
+    "feature:administrative|element:geometry|color:0x757575",
+    "feature:water|element:geometry|color:0x000000",
+    "feature:road|element:geometry.fill|color:0x2c2c2c",
+  ]
+    .map((s) => `&style=${s}`)
+    .join("");
+
+  const params = new URLSearchParams({
+    size: "600x600",
+    scale: "2",
+    maptype: "roadmap",
+    key: GOOGLE_MAPS_API_KEY,
+    path: `color:0x00fff2ff|weight:5|${path}`,
+  });
+
+  return `${base}?${params.toString()}${styles}&markers=color:0x00ff00|label:S|${start.latitude},${start.longitude}&markers=color:0x00ffff|label:F|${end.latitude},${end.longitude}`;
+};
 
 export default function StartActivity() {
+  useKeepAwake();
   const router = useRouter();
+
+  // --- STATE ---
   const [isActive, setIsActive] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -31,253 +88,233 @@ export default function StartActivity() {
   const [title, setTitle] = useState("");
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mapRef = useRef<MapView | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(
     null,
   );
+  const distanceRef = useRef(0);
+
+  const formatTime = (s: number) =>
+    new Date(s * 1000).toISOString().substr(11, 8);
+  const formatKM = (d: number) => (d / 1000).toFixed(2);
+
+  const staticMapUrl = useMemo(
+    () => buildStaticMapUrl(coords),
+    [coords, showModal],
+  );
+
+  // --- NOTIFICATION ENGINE ---
+  const syncExternalWidget = async (secs: number, dist: number) => {
+    await notifee.displayNotification({
+      id: "tracking",
+      title: "ePRX On the Go: ACTIVE SESSION",
+      body: `⏱️ ${formatTime(secs)}  |  📍 ${formatKM(dist)} KM`,
+      android: {
+        channelId: "tracking",
+        ongoing: true,
+        asForegroundService: true,
+        pressAction: { id: "default" },
+        color: AndroidColor.CYAN,
+        importance: AndroidImportance.LOW,
+      },
+    });
+  };
 
   useEffect(() => {
-    (async () => {
-      let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== "granted") {
-        Alert.alert("PERMISSION_DENIED", "GPS_UPLINK_REQUIRED");
-      }
-    })();
-    return () => stopTracking();
-  }, []);
-
-  useEffect(() => {
+    let isMounted = true;
     if (isActive) {
-      startTracking();
-      timerRef.current = setInterval(() => setSeconds((s) => s + 1), 1000);
+      (async () => {
+        await notifee.requestPermission();
+        await notifee.createChannel({
+          id: "tracking",
+          name: "Active Session Tracking",
+          importance: AndroidImportance.LOW,
+        });
+
+        locationSubscription.current = await Location.watchPositionAsync(
+          {
+            accuracy: Location.Accuracy.BestForNavigation,
+            distanceInterval: 1,
+            timeInterval: 1000,
+          },
+          (loc) => {
+            if (!isMounted) return;
+            const { latitude, longitude, speed, altitude } = loc.coords;
+            const newPoint = { latitude, longitude };
+            setCoords((prev) => {
+              if (prev.length > 0) {
+                const d = getDistance(prev[prev.length - 1], newPoint);
+                if (speed !== null && speed < 0.5 && d < 5) return prev;
+                distanceRef.current += d;
+                setDistance(distanceRef.current);
+                return [...prev, newPoint];
+              }
+              return [newPoint];
+            });
+            if (altitude) setElevation(altitude);
+          },
+        );
+
+        await syncExternalWidget(seconds, distanceRef.current);
+        timerRef.current = setInterval(() => {
+          setSeconds((prev) => {
+            const next = prev + 1;
+            syncExternalWidget(next, distanceRef.current);
+            return next;
+          });
+        }, 1000);
+      })();
     } else {
-      stopTracking();
+      locationSubscription.current?.remove();
+      notifee.stopForegroundService();
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
+      isMounted = false;
+      locationSubscription.current?.remove();
     };
   }, [isActive]);
 
-  const startTracking = async () => {
-    locationSubscription.current = await Location.watchPositionAsync(
-      { accuracy: Location.Accuracy.BestForNavigation, distanceInterval: 5 },
-      (location) => {
-        const { latitude, longitude, altitude } = location.coords;
-        const newPoint = { latitude, longitude };
-
-        setCoords((prev) => {
-          if (prev.length > 0) {
-            const lastPoint = prev[prev.length - 1];
-            const dist = getDistance(lastPoint, newPoint);
-            setDistance((d) => d + dist);
-          }
-          return [...prev, newPoint];
-        });
-        if (altitude) setElevation(altitude);
-      },
-    );
-  };
-
-  const stopTracking = () => {
-    locationSubscription.current?.remove();
-    locationSubscription.current = null;
-  };
-
-  const triggerStopSequence = () => {
-    setIsActive(false);
-    setTimeout(() => setShowModal(true), 150);
-  };
-
   const handleSave = async () => {
-    if (!title)
-      return Alert.alert("INPUT_REQUIRED", "Please name this sequence.");
+    if (!title) return Alert.alert("REQUIRED", "Enter sequence title.");
 
     setIsSyncing(true);
-    let base64Map: string | null = null;
-
-    // 1. Capture Snapshot
-    if (mapRef.current) {
-      try {
-        const snapshot = await mapRef.current.takeSnapshot({
-          format: "jpg",
-          quality: 0.5,
-          result: "base64",
-        });
-        base64Map = `data:image/jpg;base64,${snapshot}`;
-      } catch (err) {
-        console.error("📸 SNAPSHOT_FAILED:", err);
-      }
-    }
-
-    // 2. Prepare Payload
-    const payload = {
-      title,
-      distance: parseFloat((distance / 1000).toFixed(2)),
-      duration: seconds,
-      pace:
-        seconds > 0 && distance > 0
-          ? (seconds / 60 / (distance / 1000)).toFixed(2)
-          : "0:00",
-      elevation: parseFloat(elevation.toFixed(1)),
-      coordinates: coords,
-      mapImageUrl: base64Map,
-    };
-
     try {
-      // 3. API Call
-      const response = await api.post("/activities", payload);
+      const payload = {
+        title,
+        // Convert to numbers to match Float in Prisma schema
+        distance: parseFloat((distance / 1000).toFixed(2)),
+        duration: seconds,
+        elevation: parseFloat(elevation.toFixed(1)),
+        // Match the "coordinates" field name in your schema
+        coordinates: coords,
+        // Save the neon static map link
+        mapImageUrl: staticMapUrl,
+        // Optional: If you generate the share card later, keep this null for now
+        shareImageUrl: null,
+      };
 
-      if (response.status === 201 || response.status === 200) {
-        const shareUrl = response.data.shareUrl;
-        setShowModal(false);
+      await api.post("/activities", payload);
 
-        // 4. Share with Cache Buster
-        if (shareUrl) {
-          try {
-            const freshShareUrl = `${shareUrl}${shareUrl.includes("?") ? "&" : "?"}v=${Date.now()}`;
-            await Share.open({
-              url: freshShareUrl,
-              failOnCancel: false,
-            });
-          } catch (shareError) {
-            console.log("Share dismissed:", shareError);
-          }
-        }
-        router.replace("/(tabs)");
-      }
-    } catch (e: any) {
-      console.error("SYNC_ERROR:", e.message);
-      Alert.alert("SYNC ERROR", "DATA TRANSMISSION FAILED");
+      Alert.alert("SUCCESS", "Mission Log Synchronized.");
+      setShowModal(false);
+      router.replace("/(tabs)");
+    } catch (e) {
+      console.error("SYNC_ERROR:", e);
+      Alert.alert("SYNC_ERROR", "DATA_TRANSMISSION_FAILED");
     } finally {
       setIsSyncing(false);
     }
   };
 
   return (
-    <View style={styles.container}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-        <ArrowLeft size={20} color={CYBER_THEME.primary} />
-        <Text style={styles.backText}>CANCEL ACTIVITY</Text>
+    <View style={localStyles.container}>
+      <TouchableOpacity
+        onPress={() => router.back()}
+        style={localStyles.backBtn}
+      >
+        <ArrowLeft color={CYBER_THEME.primary} size={20} />
+        <Text style={localStyles.backText}>CANCEL SESSION</Text>
       </TouchableOpacity>
 
-      <View style={styles.content}>
-        <Text style={styles.timerText}>
-          {new Date(seconds * 1000).toISOString().substr(11, 8)}
-        </Text>
-
-        <View style={styles.statsGrid}>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>DISTANCE (KM)</Text>
-            <Text style={styles.statValue}>{(distance / 1000).toFixed(2)}</Text>
+      <View style={localStyles.content}>
+        <Text style={localStyles.timerText}>{formatTime(seconds)}</Text>
+        <View style={localStyles.statsGrid}>
+          <View style={localStyles.statBox}>
+            <Text style={localStyles.statLabel}>DISTANCE KM</Text>
+            <Text style={localStyles.statValue}>{formatKM(distance)}</Text>
           </View>
-          <View style={styles.statBox}>
-            <Text style={styles.statLabel}>ELEVATION (M)</Text>
-            <Text style={styles.statValue}>{elevation.toFixed(0)}</Text>
+          <View style={localStyles.statBox}>
+            <Text style={localStyles.statLabel}>ELEVATION M</Text>
+            <Text style={localStyles.statValue}>{elevation.toFixed(0)}</Text>
           </View>
         </View>
 
-        <View style={styles.controls}>
+        <View style={localStyles.controls}>
           <TouchableOpacity
-            style={styles.btn}
+            style={localStyles.btn}
             onPress={() => setIsActive(!isActive)}
           >
             {isActive ? (
-              <Pause color="#ffaa00" size={40} />
+              <Pause
+                color={CYBER_THEME.primary}
+                size={35}
+                fill={CYBER_THEME.primary}
+              />
             ) : (
-              <Play color={CYBER_THEME.primary} size={40} />
+              <Play
+                color={CYBER_THEME.primary}
+                size={35}
+                fill={CYBER_THEME.primary}
+              />
             )}
           </TouchableOpacity>
-
           <TouchableOpacity
-            style={[styles.btn, { borderColor: "#ff0000" }]}
-            onPress={triggerStopSequence}
+            style={[localStyles.btn, { borderColor: "#ff0000" }]}
+            onPress={() => {
+              setIsActive(false);
+              setShowModal(true);
+            }}
           >
             <Square color="#ff0000" size={30} fill="#ff0000" />
           </TouchableOpacity>
         </View>
       </View>
 
-      <Modal
-        visible={showModal}
-        transparent
-        animationType="slide"
-        onRequestClose={() => !isSyncing && setShowModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>SAVE ACTIVITY LOG</Text>
-            <View style={styles.mapContainer}>
-              {coords.length > 0 ? (
-                <MapView
-                  ref={mapRef}
-                  style={styles.map}
-                  provider={MAP_PROVIDER}
-                  customMapStyle={mapStyle}
-                  initialRegion={{
-                    latitude: coords[0].latitude,
-                    longitude: coords[0].longitude,
-                    latitudeDelta: 0.01,
-                    longitudeDelta: 0.01,
-                  }}
-                  scrollEnabled={false}
-                  zoomEnabled={false}
-                >
-                  <Polyline
-                    coordinates={coords}
-                    strokeWidth={4}
-                    strokeColor={CYBER_THEME.primary}
-                  />
-                </MapView>
+      <Modal visible={showModal} transparent animationType="slide">
+        <View style={localStyles.modalOverlay}>
+          <View style={localStyles.modalContent}>
+            {/* --- MAP LAYOUT FROM DETAIL FILE --- */}
+            <View style={localStyles.mapWrapper}>
+              {staticMapUrl ? (
+                <Image
+                  source={{ uri: staticMapUrl }}
+                  style={StyleSheet.absoluteFillObject}
+                />
               ) : (
-                <View style={styles.mapPlaceholder}>
-                  <Text style={styles.mapPlaceholderText}>NO_GPS_DATA</Text>
-                </View>
+                <ActivityIndicator color={CYBER_THEME.primary} />
               )}
-              <View style={styles.mapOverlayFrame} />
             </View>
 
-            <TextInput
-              style={styles.input}
-              placeholder="ACTIVITY TITLE"
-              placeholderTextColor="#444"
-              value={title}
-              onChangeText={setTitle}
-              editable={!isSyncing}
-            />
-
-            <View style={styles.statsSummary}>
-              <View style={styles.miniStat}>
-                <Text style={styles.miniLabel}>KM</Text>
-                <Text style={styles.miniValue}>
-                  {(distance / 1000).toFixed(2)}
-                </Text>
-              </View>
-              <View style={styles.miniStat}>
-                <Text style={styles.miniLabel}>PACE</Text>
-                <Text style={styles.miniValue}>
-                  {seconds > 0 && distance > 0
-                    ? (seconds / 60 / (distance / 1000)).toFixed(2)
-                    : "0:00"}
-                </Text>
+            <View style={localStyles.modalStatsOverlay}>
+              <TextInput
+                style={localStyles.missionTitleInput}
+                placeholder="ENTER ACTIVITY TITLE"
+                placeholderTextColor="#555"
+                value={title}
+                onChangeText={setTitle}
+              />
+              <View style={localStyles.divider} />
+              <View style={localStyles.row}>
+                <StatBox
+                  icon={<Ruler size={14} color={CYBER_THEME.primary} />}
+                  label="DIST"
+                  value={`${formatKM(distance)} KM`}
+                />
+                <StatBox
+                  icon={<Clock size={14} color={CYBER_THEME.primary} />}
+                  label="TIME"
+                  value={`${Math.floor(seconds / 60)}M`}
+                />
+                <StatBox
+                  icon={<Zap size={14} color={CYBER_THEME.primary} />}
+                  label="ELEV"
+                  value={`${elevation.toFixed(0)}M`}
+                />
               </View>
             </View>
 
             <TouchableOpacity
-              style={[styles.saveBtn, isSyncing && { opacity: 0.5 }]}
+              style={localStyles.saveBtn}
               onPress={handleSave}
               disabled={isSyncing}
             >
-              <Text style={styles.saveBtnText}>
-                {isSyncing ? "SYNCING..." : "UPLOAD TO HISTORY"}
+              <Text style={localStyles.saveBtnText}>
+                {isSyncing ? "UPLOADING..." : "SAVE TO HISTORY LOG"}
               </Text>
             </TouchableOpacity>
-
-            {!isSyncing && (
-              <TouchableOpacity onPress={() => setShowModal(false)}>
-                <Text style={styles.cancelText}>CANCEL DISCARD</Text>
-              </TouchableOpacity>
-            )}
+            <TouchableOpacity onPress={() => setShowModal(false)}>
+              <Text style={localStyles.cancelText}>CANCEL</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -285,14 +322,24 @@ export default function StartActivity() {
   );
 }
 
-const styles = StyleSheet.create({
+const StatBox = ({ icon, label, value }: any) => (
+  <View style={localStyles.statItem}>
+    {icon}
+    <View>
+      <Text style={localStyles.statLabelSmall}>{label}</Text>
+      <Text style={localStyles.statValueSmall}>{value}</Text>
+    </View>
+  </View>
+);
+
+const localStyles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000", padding: 20, paddingTop: 60 },
   backBtn: { flexDirection: "row", alignItems: "center", gap: 10 },
   backText: { color: CYBER_THEME.primary, fontSize: 12, fontWeight: "900" },
   content: { flex: 1, justifyContent: "center", alignItems: "center" },
   timerText: {
     color: CYBER_THEME.primary,
-    fontSize: 64,
+    fontSize: 58,
     fontWeight: "900",
     marginBottom: 40,
   },
@@ -319,108 +366,56 @@ const styles = StyleSheet.create({
     backgroundColor: "#0a0a0a",
   },
 
-  // Modal Styles
-
+  // Modal & Shared Layout Styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: "rgba(0,0,0,0.9)",
+    backgroundColor: "rgba(0,0,0,0.95)",
     justifyContent: "center",
-    padding: 20,
   },
   modalContent: {
-    backgroundColor: "#0a0a0a",
-    borderWidth: 1,
-    borderColor: CYBER_THEME.primary,
-    padding: 30,
+    backgroundColor: "#000",
+    margin: 10,
     borderRadius: 20,
-    alignItems: "center",
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: "#1a1a1a",
+    paddingBottom: 20,
   },
-  modalTitle: {
-    color: CYBER_THEME.primary,
-    fontSize: 18,
-    fontWeight: "900",
-    marginBottom: 25,
-  },
-  input: {
+  mapWrapper: {
     width: "100%",
-    borderBottomWidth: 1,
-    borderColor: CYBER_THEME.primary,
+    height: width - 40,
+    backgroundColor: "#111",
+    justifyContent: "center",
+  },
+  modalStatsOverlay: { padding: 20 },
+  missionTitleInput: {
     color: "#fff",
-    padding: 10,
-    marginBottom: 20,
+    fontSize: 14,
+    fontWeight: "900",
+    letterSpacing: 2,
+    borderBottomWidth: 1,
+    borderColor: "#222",
+    paddingBottom: 5,
   },
-  summaryRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    width: "100%",
-    marginBottom: 10,
-  },
-  summaryLabel: { color: "#666" },
-  summaryValue: { color: CYBER_THEME.primary, fontWeight: "bold" },
+  divider: { height: 1, backgroundColor: "#1a1a1a", marginVertical: 15 },
+  row: { flexDirection: "row", justifyContent: "space-between" },
+  statItem: { flexDirection: "row", alignItems: "center", gap: 8 },
+  statLabelSmall: { color: "#555", fontSize: 8, fontWeight: "900" },
+  statValueSmall: { color: "#fff", fontSize: 14, fontWeight: "bold" },
   saveBtn: {
     backgroundColor: CYBER_THEME.primary,
-    width: "100%",
+    marginHorizontal: 20,
     padding: 15,
     borderRadius: 5,
     alignItems: "center",
-    marginTop: 20,
   },
   saveBtnText: { color: "#000", fontWeight: "900" },
-
-  mapContainer: {
-    width: "100%",
-    height: 180,
-    borderRadius: 10,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: "#333",
-    marginBottom: 20,
-    position: "relative",
-  },
-  map: { width: "100%", height: "100%" },
-  mapOverlayFrame: {
-    ...StyleSheet.absoluteFillObject,
-    borderWidth: 10,
-    borderColor: "rgba(0,0,0,0.2)", // Creates a vignette effect
-    pointerEvents: "none",
-  },
-  mapPlaceholder: {
-    flex: 1,
-    backgroundColor: "#050505",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  mapPlaceholderText: { color: "#333", fontSize: 10, fontWeight: "bold" },
-  statsSummary: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    width: "100%",
-    marginVertical: 15,
-  },
-  miniStat: { alignItems: "center" },
-  miniLabel: { color: "#444", fontSize: 8, fontWeight: "900" },
-  miniValue: { color: "#fff", fontSize: 14, fontWeight: "bold" },
   cancelText: {
     color: "#ff0000",
-    marginTop: 20,
+    textAlign: "center",
+    marginTop: 15,
     fontSize: 10,
     fontWeight: "bold",
     opacity: 0.6,
   },
 });
-
-const mapStyle = [
-  { elementType: "geometry", stylers: [{ color: "#212121" }] },
-  { elementType: "labels.text.fill", stylers: [{ color: "#757575" }] },
-  { elementType: "labels.text.stroke", stylers: [{ color: "#212121" }] },
-  {
-    featureType: "road",
-    elementType: "geometry",
-    stylers: [{ color: "#303030" }],
-  },
-  {
-    featureType: "water",
-    elementType: "geometry",
-    stylers: [{ color: "#000000" }],
-  },
-];

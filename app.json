@@ -26,7 +26,8 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
-        "RECORD_AUDIO"
+        "FOREGROUND_SERVICE_LOCATION",
+        "POST_NOTIFICATIONS"
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -51,6 +52,7 @@
       "expo-router",
       "expo-font",
       "expo-secure-store",
+
       [
         "expo-image-picker",
         {
@@ -64,7 +66,8 @@
           "isAndroidBackgroundLocationEnabled": true,
           "locationAlwaysPermission": "Allow ePRX UV1 to access your location even when the app is in the background."
         }
-      ]
+      ],
+      "expo-widgets"
     ],
     "experiments": {
       "typedRoutes": true
@@ -72,6 +75,9 @@
     "extra": {
       "eas": {
         "projectId": "7f52b4c3-6e47-4dce-b946-831c55d4620a"
+      },
+      "router": {
+        "origin": false
       }
     }
   }

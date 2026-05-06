@@ -119,7 +119,7 @@ export default function ProfileScreen() {
         const token = await getToken();
 
         if (!token) {
-          Alert.alert("SESSION_EXPIRED", "Please log in again.");
+          Alert.alert("SESSION EXPIRED", "Please log in again.");
           return;
         }
 

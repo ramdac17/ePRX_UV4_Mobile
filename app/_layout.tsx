@@ -1,12 +1,29 @@
 // 1. ABSOLUTE TOP - This handles all the polyfilling we proved in UV3
 import "../globals";
-
 import { DarkTheme, ThemeProvider } from "@react-navigation/native";
 import { useEffect, useState, useCallback } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { LogBox } from "react-native";
-// ✅ Now using the centralized secure helper
 import { getToken } from "@/utils/authStorage";
+import notifee, { EventType } from "@notifee/react-native";
+
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  const { notification, pressAction } = detail;
+
+  if (type === EventType.PRESS && pressAction?.id === "default") {
+    // This allows the notification to bring the app to the foreground
+    console.log("ePRX_UV1: User pressed notification in background");
+
+    // Remove the notification if needed, or just let it stay
+    // since it's an ongoing tracking session
+  }
+});
+
+notifee.registerForegroundService((notification) => {
+  return new Promise(() => {
+    console.log("ePRX_UV1: Telemetry Runner Active");
+  });
+});
 
 LogBox.ignoreLogs(["Require cycle:", "Non-serializable values"]);
 

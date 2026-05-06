@@ -2,7 +2,7 @@ import axios from "axios";
 
 // 1. Replace with your actual Railway URL
 // const RAILWAY_URL = "http://eprxuv1-monorepo-production.up.railway.app";
-const LOCAL_IP = "192.168.0.152";
+const LOCAL_IP = "192.168.133.192"; // Revert back to 192.168.0.152
 const API_URL = `http://${LOCAL_IP}:3000/api`;
 console.log("🚀 MOBILE_UPLINK_TARGET:", API_URL);
 

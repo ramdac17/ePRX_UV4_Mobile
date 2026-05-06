@@ -2,32 +2,24 @@ import { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { useRouter } from "expo-router";
 import { getToken } from "@/utils/authStorage";
-import { CYBER_THEME } from "@/constants/Colors";
 
-export default function EntryPoint() {
+export default function Index() {
   const router = useRouter();
 
   useEffect(() => {
-    const initializeApp = async () => {
-      // 🛡️ AUTH_STRATEGY: Check for existing session
+    const checkAuth = async () => {
       const token = await getToken();
-
-      if (token) {
-        // Operative Validated -> Redirect to Dashboard
-        router.replace("/(tabs)");
-      } else {
-        // No Session -> Redirect to Login
-        router.replace("/login");
-      }
+      // Artificial delay for splash feel
+      setTimeout(() => {
+        router.replace(token ? "/(tabs)" : "/(auth)/Login");
+      }, 1000);
     };
+    checkAuth();
+  }, [router]);
 
-    initializeApp();
-  }, []);
-
-  // Simple, themed loader while the redirect logic processes
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={CYBER_THEME.primary} size="large" />
+      <ActivityIndicator size="large" color="#D4FF00" />
     </View>
   );
 }
