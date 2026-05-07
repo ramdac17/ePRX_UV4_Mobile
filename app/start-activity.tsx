@@ -41,15 +41,37 @@ const { width } = Dimensions.get("window");
 const GOOGLE_MAPS_API_KEY = "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM";
 
 // ===============================
-// STATIC MAP BUILDER (From Details)
+// TELEMETRY HELPERS
 // ===============================
+
+/**
+ * Downsamples coordinates to keep URL length within Google's 8192 char limit.
+ * Optimized for ePRX UV1 visual cards.
+ */
+const downsampleCoords = (coords: any[], maxPoints: number = 50) => {
+  if (coords.length <= maxPoints) return coords;
+  const step = Math.ceil(coords.length / maxPoints);
+  const thinned = coords.filter((_, index) => index % step === 0);
+  // Ensure the final coordinate is always preserved
+  const lastPoint = coords[coords.length - 1];
+  if (thinned[thinned.length - 1] !== lastPoint) {
+    thinned.push(lastPoint);
+  }
+  return thinned;
+};
+
 const buildStaticMapUrl = (coords: any[]) => {
   if (!coords?.length) return null;
-  const start = coords[0];
-  const end = coords[coords.length - 1];
-  const path = coords.map((p) => `${p.latitude},${p.longitude}`).join("|");
-  const base = "https://maps.googleapis.com/maps/api/staticmap";
 
+  // Thin out the path for the API call
+  const displayCoords = downsampleCoords(coords, 50);
+  const start = displayCoords[0];
+  const end = displayCoords[displayCoords.length - 1];
+  const path = displayCoords
+    .map((p) => `${p.latitude},${p.longitude}`)
+    .join("|");
+
+  const base = "https://maps.googleapis.com/maps/api/staticmap";
   const styles = [
     "element:geometry|color:0x212121",
     "element:labels.icon|visibility:off",
@@ -87,12 +109,14 @@ export default function StartActivity() {
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState("");
 
+  // --- REFS ---
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const locationSubscription = useRef<Location.LocationSubscription | null>(
     null,
   );
   const distanceRef = useRef(0);
 
+  // --- UTILS ---
   const formatTime = (s: number) =>
     new Date(s * 1000).toISOString().substr(11, 8);
   const formatKM = (d: number) => (d / 1000).toFixed(2);
@@ -106,7 +130,7 @@ export default function StartActivity() {
   const syncExternalWidget = async (secs: number, dist: number) => {
     await notifee.displayNotification({
       id: "tracking",
-      title: "ePRX On the Go: ACTIVE SESSION",
+      title: "ePRX UV1: ACTIVE_SESSION",
       body: `⏱️ ${formatTime(secs)}  |  📍 ${formatKM(dist)} KM`,
       android: {
         channelId: "tracking",
@@ -123,7 +147,15 @@ export default function StartActivity() {
     let isMounted = true;
     if (isActive) {
       (async () => {
-        await notifee.requestPermission();
+        const permission = await notifee.requestPermission();
+        if (permission.authorizationStatus < 1) {
+          setIsActive(false);
+          return Alert.alert(
+            "PERMISSION_DENIED",
+            "Notification access required for tracking.",
+          );
+        }
+
         await notifee.createChannel({
           id: "tracking",
           name: "Active Session Tracking",
@@ -140,10 +172,13 @@ export default function StartActivity() {
             if (!isMounted) return;
             const { latitude, longitude, speed, altitude } = loc.coords;
             const newPoint = { latitude, longitude };
+
             setCoords((prev) => {
               if (prev.length > 0) {
                 const d = getDistance(prev[prev.length - 1], newPoint);
+                // Drift Filter
                 if (speed !== null && speed < 0.5 && d < 5) return prev;
+
                 distanceRef.current += d;
                 setDistance(distanceRef.current);
                 return [...prev, newPoint];
@@ -166,6 +201,7 @@ export default function StartActivity() {
     } else {
       locationSubscription.current?.remove();
       notifee.stopForegroundService();
+      notifee.cancelNotification("tracking");
       if (timerRef.current) clearInterval(timerRef.current);
     }
     return () => {
@@ -174,22 +210,19 @@ export default function StartActivity() {
     };
   }, [isActive]);
 
+  // --- ACTIONS ---
   const handleSave = async () => {
-    if (!title) return Alert.alert("REQUIRED", "Enter sequence title.");
+    if (!title) return Alert.alert("REQUIRED", "Enter activity title.");
 
     setIsSyncing(true);
     try {
       const payload = {
         title,
-        // Convert to numbers to match Float in Prisma schema
         distance: parseFloat((distance / 1000).toFixed(2)),
         duration: seconds,
         elevation: parseFloat(elevation.toFixed(1)),
-        // Match the "coordinates" field name in your schema
-        coordinates: coords,
-        // Save the neon static map link
-        mapImageUrl: staticMapUrl,
-        // Optional: If you generate the share card later, keep this null for now
+        coordinates: coords, // Full high-fidelity data for DB
+        mapImageUrl: staticMapUrl, // Downsampled URL for preview
         shareImageUrl: null,
       };
 
@@ -200,7 +233,7 @@ export default function StartActivity() {
       router.replace("/(tabs)");
     } catch (e) {
       console.error("SYNC_ERROR:", e);
-      Alert.alert("SYNC_ERROR", "DATA_TRANSMISSION_FAILED");
+      Alert.alert("SYNC_ERROR", "DATA TRANSMISSION FAILED");
     } finally {
       setIsSyncing(false);
     }
@@ -263,7 +296,6 @@ export default function StartActivity() {
       <Modal visible={showModal} transparent animationType="slide">
         <View style={localStyles.modalOverlay}>
           <View style={localStyles.modalContent}>
-            {/* --- MAP LAYOUT FROM DETAIL FILE --- */}
             <View style={localStyles.mapWrapper}>
               {staticMapUrl ? (
                 <Image
@@ -271,7 +303,12 @@ export default function StartActivity() {
                   style={StyleSheet.absoluteFillObject}
                 />
               ) : (
-                <ActivityIndicator color={CYBER_THEME.primary} />
+                <View style={localStyles.loaderContainer}>
+                  <ActivityIndicator color={CYBER_THEME.primary} />
+                  <Text style={localStyles.loaderText}>
+                    GENERATING_MAP_DATA...
+                  </Text>
+                </View>
               )}
             </View>
 
@@ -365,8 +402,6 @@ const localStyles = StyleSheet.create({
     alignItems: "center",
     backgroundColor: "#0a0a0a",
   },
-
-  // Modal & Shared Layout Styles
   modalOverlay: {
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.95)",
@@ -386,6 +421,13 @@ const localStyles = StyleSheet.create({
     height: width - 40,
     backgroundColor: "#111",
     justifyContent: "center",
+  },
+  loaderContainer: { alignItems: "center" },
+  loaderText: {
+    color: "#444",
+    fontSize: 10,
+    marginTop: 10,
+    fontWeight: "bold",
   },
   modalStatsOverlay: { padding: 20 },
   missionTitleInput: {
