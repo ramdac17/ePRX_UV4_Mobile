@@ -12,7 +12,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
   if (type === EventType.PRESS && pressAction?.id === "default") {
     // This allows the notification to bring the app to the foreground
-    console.log("ePRX_UV1: User pressed notification in background");
+    console.log("ePRX OTG: User pressed notification in background");
 
     // Remove the notification if needed, or just let it stay
     // since it's an ongoing tracking session
@@ -21,7 +21,7 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 
 notifee.registerForegroundService((notification) => {
   return new Promise(() => {
-    console.log("ePRX_UV1: Telemetry Runner Active");
+    console.log("ePRX OTG: Telemetry Runner Active");
   });
 });
 
@@ -55,7 +55,7 @@ export default function RootLayout() {
       // Only update state if it actually changed to prevent render loops
       setHasToken(exists);
     } catch (e) {
-      console.error("📡 AUTH_INIT_FAILURE:", e);
+      console.error("📡 AUTHENTICATION FAILED:", e);
       setHasToken(false);
     } finally {
       setIsAuthLoaded(true);

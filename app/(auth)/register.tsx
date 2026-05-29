@@ -7,8 +7,8 @@ import {
   Platform,
   ScrollView,
   Alert,
-  View, // Use standard View for layout stability
-  Text, // Use standard Text for layout stability
+  View,
+  Text,
 } from "react-native";
 import { CYBER_THEME } from "@/constants/Colors";
 import { useRouter } from "expo-router";
@@ -38,6 +38,15 @@ export default function RegisterScreen() {
     return () => clearInterval(interval);
   }, [timer]);
 
+  // Helper helper to format MM:SS dynamically
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    const formattedMins = mins < 10 ? `0${mins}` : mins;
+    const formattedSecs = secs < 10 ? `0${secs}` : secs;
+    return `${formattedMins}:${formattedSecs}`;
+  };
+
   const handleRegister = async () => {
     if (!email || !password || !username || !firstName || !lastName) {
       return Alert.alert("REQUIRED", "ALL_FIELDS_MUST_BE_FILLED");
@@ -56,12 +65,12 @@ export default function RegisterScreen() {
 
       await api.post("/auth/register", registrationData);
       setIsVerifying(true);
-      setTimer(60);
+      setTimer(180); // 🟢 Updated from 60 to 180 seconds (3 minutes)
       setOtpCode("");
 
       Alert.alert(
         "VERIFICATION_SENT",
-        "SECURITY_CODE_ISSUED. YOU_HAVE_60_SECONDS_TO_ACTIVATE.",
+        "SECURITY_CODE_ISSUED. YOU_HAVE_3_MINUTES_TO_ACTIVATE.", // 🟢 Updated text warning
       );
     } catch (error: any) {
       const msg = error.response?.data?.message || "REGISTRATION_FAILED";
@@ -132,7 +141,6 @@ export default function RegisterScreen() {
                   placeholder="OPERATIVE_TAG"
                   placeholderTextColor="#333"
                 />
-                {/* 🟢 FIXED ROW: Explicit background for children container */}
                 <View style={styles.nameRow}>
                   <View style={styles.flex1}>
                     <Text style={styles.label}>FIRST NAME</Text>
@@ -172,7 +180,7 @@ export default function RegisterScreen() {
                   onChangeText={setPassword}
                 />
 
-                <Text style={styles.label}>MOBILE NUMER</Text>
+                <Text style={styles.label}>MOBILE NUMBER</Text>
                 <TextInput
                   style={styles.input}
                   secureTextEntry
@@ -202,9 +210,7 @@ export default function RegisterScreen() {
                       timer < 10 && { color: "#ff4444" },
                     ]}
                   >
-                    {timer > 0
-                      ? `00:${timer < 10 ? `0${timer}` : timer}`
-                      : "TOKEN_EXPIRED"}
+                    {timer > 0 ? formatTime(timer) : "TOKEN_EXPIRED"}
                   </Text>
                 </View>
 
@@ -300,7 +306,7 @@ const styles = StyleSheet.create({
   nameRow: {
     flexDirection: "row",
     gap: 10,
-    backgroundColor: "transparent", // 🟢 Forces transparency on the container
+    backgroundColor: "transparent",
   },
   flex1: { flex: 1, backgroundColor: "transparent" },
   label: { color: "#666", fontSize: 10, marginBottom: 8 },

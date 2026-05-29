@@ -70,12 +70,12 @@ export default function LoginScreen() {
               resizeMode="contain"
             />
             <Text style={styles.logoText}>
-              ePRX <Text style={{ color: CYBER_THEME.primary }}>UV1</Text>
+              ePRX <Text style={{ color: CYBER_THEME.primary }}> OTG</Text>
             </Text>
           </View>
 
           <Text style={styles.subtitle}>
-            {isLoading ? "VERIFYING_CREDENTIALS..." : "AUTHENTICATION REQUIRED"}
+            {isLoading ? "VERIFYING CREDENTIALS..." : "AUTHENTICATION REQUIRED"}
           </Text>
         </View>
 

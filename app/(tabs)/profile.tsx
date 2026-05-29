@@ -34,7 +34,7 @@ export default function ProfileScreen() {
       const res = await api.get("/auth/profile");
       setUser(res.data);
     } catch (e) {
-      console.error("🔴 PROFILE_SYNC_ERROR:", e);
+      console.error("🔴 PROFILE SYNC ERROR:", e);
     }
   };
 
@@ -60,7 +60,7 @@ export default function ProfileScreen() {
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert("PERMISSION_DENIED", "Access to gallery required.");
+      Alert.alert("PERMISSION DENIED", "Access to gallery required.");
       return;
     }
 
@@ -140,17 +140,17 @@ export default function ProfileScreen() {
         const result = await response.json();
 
         if (response.status === 401) {
-          throw new Error("SESSION_INVALID_OR_EXPIRED");
+          throw new Error("SESSION INVALID OR EXPIRED");
         }
 
         if (!response.ok) {
-          throw new Error(result.message || "UPLINK_FAILED");
+          throw new Error(result.message || "UPLINK FAILED");
         }
 
         await fetchProfile();
-        Alert.alert("SUCCESS", "IDENTITY_IMAGE_SYNCED_TO_CLOUD");
+        Alert.alert("SUCCESS", "IDENTITY IMAGE SYNCED TO CLOUD");
       } catch (uploadError: any) {
-        console.error("🔴 UPLOAD_ERROR:", uploadError.message);
+        console.error("🔴 UPLOAD ERROR:", uploadError.message);
         Alert.alert("UPLOAD_FAILED", uploadError.message);
       } finally {
         setUploading(false);
@@ -159,7 +159,7 @@ export default function ProfileScreen() {
   };
 
   const handleLogout = async () => {
-    Alert.alert("TERMINATE_SESSION", "Confirm logout protocol?", [
+    Alert.alert("LOGOUT", "Confirm logout?", [
       { text: "CANCEL", style: "cancel" },
       {
         text: "CONFIRM",
@@ -211,7 +211,7 @@ export default function ProfileScreen() {
             : "SYNCING..."}
         </Text>
         <Text style={styles.userEmail}>
-          {user?.email?.toLowerCase() || "STATION_AGENT"}
+          {user?.email?.toLowerCase() || "STATION AGENT"}
         </Text>
       </View>
 
@@ -219,7 +219,7 @@ export default function ProfileScreen() {
         <TouchableOpacity
           style={styles.menuItem}
           onPress={() =>
-            Alert.alert("RESET", "PASSWORD_RESET_PROTOCOL_INITIATED")
+            Alert.alert("RESET", "PASSWORD RESET REQUEST INITIATED")
           }
         >
           <View style={styles.menuLabel}>

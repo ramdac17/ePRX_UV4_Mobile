@@ -14,17 +14,17 @@ export default function SettingsScreen() {
   const settingsOptions = [
     {
       id: "1",
-      label: "SECURITY PROTOCOLS",
+      label: "SECURITY SETTINGS",
       icon: <Shield size={18} color={CYBER_THEME.primary} />,
     },
     {
       id: "2",
-      label: "SIGNAL NOTIFICATIONS",
+      label: "SYSTEM MESSAGE",
       icon: <Bell size={18} color={CYBER_THEME.primary} />,
     },
     {
       id: "3",
-      label: "CORE SYSTEM UPDATE",
+      label: "SYSTEM UPDATE",
       icon: <Cpu size={18} color={CYBER_THEME.primary} />,
     },
   ];

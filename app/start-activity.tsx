@@ -1,10 +1,4 @@
-import React, {
-  useState,
-  useRef,
-  useEffect,
-  useCallback,
-  useMemo,
-} from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   View,
@@ -38,21 +32,19 @@ import {
 import { useKeepAwake } from "expo-keep-awake";
 
 const { width } = Dimensions.get("window");
-const GOOGLE_MAPS_API_KEY = "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM";
+// Fallback included for safety, but prioritize process.env
+const GOOGLE_MAPS_API_KEY =
+  process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+  "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM";
 
 // ===============================
 // TELEMETRY HELPERS
 // ===============================
 
-/**
- * Downsamples coordinates to keep URL length within Google's 8192 char limit.
- * Optimized for ePRX UV1 visual cards.
- */
 const downsampleCoords = (coords: any[], maxPoints: number = 50) => {
   if (coords.length <= maxPoints) return coords;
   const step = Math.ceil(coords.length / maxPoints);
   const thinned = coords.filter((_, index) => index % step === 0);
-  // Ensure the final coordinate is always preserved
   const lastPoint = coords[coords.length - 1];
   if (thinned[thinned.length - 1] !== lastPoint) {
     thinned.push(lastPoint);
@@ -63,7 +55,6 @@ const downsampleCoords = (coords: any[], maxPoints: number = 50) => {
 const buildStaticMapUrl = (coords: any[]) => {
   if (!coords?.length) return null;
 
-  // Thin out the path for the API call
   const displayCoords = downsampleCoords(coords, 50);
   const start = displayCoords[0];
   const end = displayCoords[displayCoords.length - 1];
@@ -108,6 +99,9 @@ export default function StartActivity() {
   const [coords, setCoords] = useState<any[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [title, setTitle] = useState("");
+  const [hasLocationPermission, setHasLocationPermission] = useState<
+    boolean | null
+  >(null);
 
   // --- REFS ---
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -115,37 +109,72 @@ export default function StartActivity() {
     null,
   );
   const distanceRef = useRef(0);
+  const secondsRef = useRef(0);
+
+  // Synchronize mutable refs with state immediately to prevent stale interval snapshots
+  useEffect(() => {
+    secondsRef.current = seconds;
+  }, [seconds]);
 
   // --- UTILS ---
   const formatTime = (s: number) =>
     new Date(s * 1000).toISOString().substr(11, 8);
   const formatKM = (d: number) => (d / 1000).toFixed(2);
 
-  const staticMapUrl = useMemo(
-    () => buildStaticMapUrl(coords),
-    [coords, showModal],
-  );
+  // Restrict evaluation of map generation strictly to the terminal screen state
+  const staticMapUrl = useMemo(() => {
+    if (!showModal) return null;
+    return buildStaticMapUrl(coords);
+  }, [coords, showModal]);
+
+  // --- INITIAL PERMISSION CHECK ENGINE ---
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setHasLocationPermission(false);
+        Alert.alert(
+          "LOCATION_DENIED",
+          "ePRX UV1 requires location uplink access to accurately map your active telemetry logs.",
+          [
+            {
+              text: "RETURN TO CORE",
+              onPress: () => router.replace("/(tabs)"),
+            },
+          ],
+        );
+      } else {
+        setHasLocationPermission(true);
+      }
+    })();
+  }, []);
 
   // --- NOTIFICATION ENGINE ---
   const syncExternalWidget = async (secs: number, dist: number) => {
-    await notifee.displayNotification({
-      id: "tracking",
-      title: "ePRX UV1: ACTIVE_SESSION",
-      body: `⏱️ ${formatTime(secs)}  |  📍 ${formatKM(dist)} KM`,
-      android: {
-        channelId: "tracking",
-        ongoing: true,
-        asForegroundService: true,
-        pressAction: { id: "default" },
-        color: AndroidColor.CYAN,
-        importance: AndroidImportance.LOW,
-      },
-    });
+    try {
+      await notifee.displayNotification({
+        id: "tracking",
+        title: "ePRX UV1: ACTIVE_SESSION",
+        body: `⏱️ ${formatTime(secs)}  |  📍 ${formatKM(dist)} KM`,
+        android: {
+          channelId: "tracking",
+          ongoing: true,
+          asForegroundService: true,
+          pressAction: { id: "default" },
+          color: AndroidColor.CYAN,
+          importance: AndroidImportance.LOW,
+          // textColor: "#00fff2",
+        },
+      });
+    } catch (err) {
+      console.error("Notification rendering failure:", err);
+    }
   };
 
   useEffect(() => {
     let isMounted = true;
-    if (isActive) {
+
+    if (isActive && hasLocationPermission) {
       (async () => {
         const permission = await notifee.requestPermission();
         if (permission.authorizationStatus < 1) {
@@ -189,8 +218,10 @@ export default function StartActivity() {
           },
         );
 
-        await syncExternalWidget(seconds, distanceRef.current);
+        await syncExternalWidget(secondsRef.current, distanceRef.current);
+
         timerRef.current = setInterval(() => {
+          if (!isMounted) return;
           setSeconds((prev) => {
             const next = prev + 1;
             syncExternalWidget(next, distanceRef.current);
@@ -199,16 +230,28 @@ export default function StartActivity() {
         }, 1000);
       })();
     } else {
-      locationSubscription.current?.remove();
-      notifee.stopForegroundService();
-      notifee.cancelNotification("tracking");
-      if (timerRef.current) clearInterval(timerRef.current);
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+        locationSubscription.current = null;
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+      notifee.stopForegroundService().catch(() => {});
+      notifee.cancelNotification("tracking").catch(() => {});
     }
+
     return () => {
       isMounted = false;
-      locationSubscription.current?.remove();
+      if (locationSubscription.current) {
+        locationSubscription.current.remove();
+      }
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     };
-  }, [isActive]);
+  }, [isActive, hasLocationPermission]);
 
   // --- ACTIONS ---
   const handleSave = async () => {
@@ -221,8 +264,8 @@ export default function StartActivity() {
         distance: parseFloat((distance / 1000).toFixed(2)),
         duration: seconds,
         elevation: parseFloat(elevation.toFixed(1)),
-        coordinates: coords, // Full high-fidelity data for DB
-        mapImageUrl: staticMapUrl, // Downsampled URL for preview
+        coordinates: coords,
+        mapImageUrl: buildStaticMapUrl(coords), // Direct clean build instead of caching dependency
         shareImageUrl: null,
       };
 
@@ -238,6 +281,27 @@ export default function StartActivity() {
       setIsSyncing(false);
     }
   };
+
+  if (hasLocationPermission === null) {
+    return (
+      <View
+        style={[
+          localStyles.container,
+          { justifyContent: "center", alignItems: "center" },
+        ]}
+      >
+        <ActivityIndicator color={CYBER_THEME.primary} size="large" />
+        <Text
+          style={[
+            localStyles.loaderText,
+            { color: CYBER_THEME.primary, marginTop: 15 },
+          ]}
+        >
+          INITIALIZING TELEMETRY UPLINK...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={localStyles.container}>

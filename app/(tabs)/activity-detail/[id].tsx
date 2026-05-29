@@ -13,39 +13,69 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import api from "@/utils/api";
 import { CYBER_THEME } from "@/constants/Colors";
 import {
-  ChevronLeft,
+  ArrowLeft,
   Zap,
   Ruler,
   Clock,
   Share2,
   Facebook,
+  Map as MapIcon,
 } from "lucide-react-native";
 
 import * as FileSystem from "expo-file-system";
 import * as Sharing from "expo-sharing";
-// 🚀 FIXED: Replaced raw Linking with native Share
-import Share from "react-native-share";
 import { Linking } from "react-native";
 
 const { width } = Dimensions.get("window");
 
-const BACKEND_ROOT = "https://eprxuv1-monorepo-production.up.railway.app/api";
+const MAIN_PRX_WEBSITE_URL =
+  "https://eprxuv1-monorepo-production.up.railway.app";
 const GOOGLE_MAPS_API_KEY = "AIzaSyAPJpbH9IsUJv_mJqwpTUOEPTaiePTYyYM";
 
-// ===============================
-// SAFE HELPERS
-// ===============================
 const formatDistance = (d: any) => Number(d || 0).toFixed(2);
 const formatTime = (d: any) => `${Math.floor((d || 0) / 60)}M`;
 
+/**
+ * Downsamples an array of coordinates to protect Google Static Map URL character length caps (8k limit).
+ * Keeps the absolute start and end nodes intact while skipping internal indexes uniformly.
+ */
+const downsampleCoordinates = (coords: any[], maxPoints = 35) => {
+  if (!coords || coords.length <= maxPoints) return coords;
+
+  const downsampled = [coords[0]]; // Always retain exact start
+  const step = (coords.length - 2) / (maxPoints - 2);
+
+  for (let i = 1; i < maxPoints - 1; i++) {
+    const index = Math.round(i * step);
+    if (coords[index]) {
+      downsampled.push(coords[index]);
+    }
+  }
+
+  downsampled.push(coords[coords.length - 1]); // Always retain exact finish
+  return downsampled;
+};
+
 const buildStaticMapUrl = (coords: any[]) => {
-  if (!coords?.length) return null;
-  const start = coords[0];
-  const end = coords[coords.length - 1];
-  const path = coords.map((p) => `${p.latitude},${p.longitude}`).join("|");
+  if (!coords || !Array.isArray(coords) || coords.length === 0) return null;
+
+  // Filter out any garbage or corrupt elements before processing layout geometry
+  const validCoords = coords.filter((p) => p && p.latitude && p.longitude);
+  if (validCoords.length === 0) return null;
+
+  const start = validCoords[0];
+  const end = validCoords[validCoords.length - 1];
+
+  // Downsample internal coordinates to prevent "stream reset: CANCEL" payload caps
+  const optimizedCoords = downsampleCoordinates(validCoords, 30);
+
+  // Build coordinate paths safely
+  const pathCoordinates = optimizedCoords
+    .map((p) => `${p.latitude},${p.longitude}`)
+    .join("|");
   const base = "https://maps.googleapis.com/maps/api/staticmap";
 
-  // Cyber/Dark Theme Styles
+  // Cyber Dark Theme Map Styles
   const styles = [
     "element:geometry|color:0x212121",
     "element:labels.icon|visibility:off",
@@ -55,19 +85,22 @@ const buildStaticMapUrl = (coords: any[]) => {
     "feature:water|element:geometry|color:0x000000",
     "feature:road|element:geometry.fill|color:0x2c2c2c",
   ]
-    .map((s) => `&style=${s}`)
+    .map((s) => `&style=${encodeURIComponent(s)}`)
     .join("");
 
-  const params = new URLSearchParams({
-    size: "600x600",
-    scale: "2",
-    maptype: "roadmap",
-    key: GOOGLE_MAPS_API_KEY,
-    path: `color:0x00fff2ff|weight:5|${path}`, // Neon Cyan path
-  });
+  const pathParam = encodeURIComponent(
+    `color:0x00fff2ff|weight:5|${pathCoordinates}`,
+  );
+  const startMarker = encodeURIComponent(
+    `color:0x00ff00|label:S|${start.latitude},${start.longitude}`,
+  );
+  const endMarker = encodeURIComponent(
+    `color:0x00ffff|label:F|${end.latitude},${end.longitude}`,
+  );
 
-  // Combine base, params, and the encoded styles
-  return `${base}?${params.toString()}${styles}&markers=color:0x00ff00|label:S|${start.latitude},${start.longitude}&markers=color:0x00ffff|label:F|${end.latitude},${end.longitude}`;
+  const finalUrl = `${base}?size=600x600&scale=2&maptype=roadmap&key=${GOOGLE_MAPS_API_KEY}&path=${pathParam}&markers=${startMarker}&markers=${endMarker}${styles}`;
+
+  return finalUrl;
 };
 
 export default function ActivityDetailScreen() {
@@ -84,7 +117,7 @@ export default function ActivityDetailScreen() {
         const res = await api.get(`/activities/${id}`);
         setActivity(res.data);
       } catch (err) {
-        console.error("DETAIL_FETCH_ERROR:", err);
+        console.error("🔴 DETAIL FETCH ERROR:", err);
       } finally {
         setLoading(false);
       }
@@ -92,62 +125,78 @@ export default function ActivityDetailScreen() {
     if (id) fetchDetail();
   }, [id]);
 
-  const staticMapUrl = useMemo(
-    () => buildStaticMapUrl(activity?.coordinates),
-    [activity],
-  );
+  const parsedCoordinates = useMemo(() => {
+    if (!activity) return null;
+    if (activity.coordinates) {
+      if (typeof activity.coordinates === "string") {
+        try {
+          return JSON.parse(activity.coordinates);
+        } catch {
+          return null;
+        }
+      }
+      return activity.coordinates;
+    }
+    return null;
+  }, [activity]);
 
-  // ===============================
-  // SHARE IMAGE (Native Share Sheet)
-  // ===============================
+  const mapImageUri = useMemo(() => {
+    if (!activity) return null;
+
+    // 1. Try tracking via coordinates array
+    const generatedStaticUrl = buildStaticMapUrl(parsedCoordinates);
+    if (generatedStaticUrl) return generatedStaticUrl;
+
+    // 2. Direct schema image asset matching fallbacks
+    const rawFallbackUrl =
+      activity.shareImageUrl || activity.mapImageUrl || activity.mapImage;
+
+    if (rawFallbackUrl) {
+      if (rawFallbackUrl.startsWith("http")) {
+        return rawFallbackUrl;
+      }
+      // Sanitize paths with clean separator validation splits
+      const cleanPath = rawFallbackUrl.startsWith("/")
+        ? rawFallbackUrl
+        : `/${rawFallbackUrl}`;
+      return `${MAIN_PRX_WEBSITE_URL}${cleanPath}`;
+    }
+
+    return null;
+  }, [activity, parsedCoordinates]);
+
   const onShareImage = useCallback(async () => {
     try {
-      if (!activity?.shareImageUrl) {
+      if (!mapImageUri) {
         Alert.alert("Standby", "The mission card is still being encrypted.");
         return;
       }
 
       setSharing(true);
       const fileUri = `${FileSystem.cacheDirectory}share-${activity.id}.png`;
-      const downloaded = await FileSystem.downloadAsync(
-        activity.shareImageUrl,
-        fileUri,
-      );
+      const downloaded = await FileSystem.downloadAsync(mapImageUri, fileUri);
 
       if (downloaded.status !== 200) throw new Error("Download failed");
 
       await Sharing.shareAsync(downloaded.uri, { mimeType: "image/png" });
     } catch (err) {
-      console.error("SHARE_IMAGE_ERROR:", err);
+      console.error("🔴 SHARE IMAGE ERROR:", err);
       Alert.alert("Error", "Failed to retrieve the mission card.");
     } finally {
       setSharing(false);
     }
-  }, [activity]);
+  }, [activity, mapImageUri]);
 
-  // ===============================
-  // SHARE LINK (Facebook Native Intent)
-  // ===============================
   const onShareLink = useCallback(async () => {
     if (!activity?.id) return;
 
     const shareUrl = `https://e-prx-uv-4-website.vercel.app/activity/${activity.id}`;
-
-    // Facebook's specific URL scheme for sharing a link
     const fbUrl = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`;
 
     try {
-      const supported = await Linking.canOpenURL(fbUrl);
-
-      if (supported) {
-        // This will open the FB app directly to the "Create Post" screen
-        await Linking.openURL(fbUrl);
-      } else {
-        // Fallback if they don't have the FB app
-        await Linking.openURL(fbUrl); // Will open in mobile browser
-      }
+      await Linking.openURL(fbUrl);
     } catch (err) {
-      console.error("FB_DIRECT_SHARE_FAILED", err);
+      console.error("🔴 FB_DIRECT_SHARE_FAILED", err);
       Alert.alert("Connection Error", "Could not reach the Facebook uplink.");
     }
   }, [activity?.id]);
@@ -155,7 +204,7 @@ export default function ActivityDetailScreen() {
   if (loading) {
     return (
       <View style={[styles.container, styles.center]}>
-        <ActivityIndicator color={CYBER_THEME.primary} />
+        <ActivityIndicator color={CYBER_THEME.primary} size="large" />
       </View>
     );
   }
@@ -163,17 +212,38 @@ export default function ActivityDetailScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.mapWrapper}>
-        {staticMapUrl && (
+        {mapImageUri ? (
           <Image
-            source={{ uri: staticMapUrl }}
+            source={{ uri: mapImageUri }}
             style={StyleSheet.absoluteFillObject}
-            onError={(e) => console.log("MAP_ERROR:", e.nativeEvent.error)}
+            resizeMode="cover"
+            onError={(e) =>
+              console.log("🔴 ACTIVE_MAP_RENDER_FAIL:", e.nativeEvent.error)
+            }
           />
+        ) : (
+          <View style={[styles.container, styles.center, { gap: 8 }]}>
+            <MapIcon color="#222" size={32} />
+            <Text
+              style={{
+                color: "#333",
+                fontSize: 10,
+                fontWeight: "bold",
+                letterSpacing: 1,
+              }}
+            >
+              MAP_DATA_UNAVAILABLE
+            </Text>
+          </View>
         )}
       </View>
 
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <ChevronLeft color={CYBER_THEME.primary} size={28} />
+      <TouchableOpacity
+        style={styles.backButton}
+        onPress={() => router.replace("/(tabs)/history")}
+        activeOpacity={0.7}
+      >
+        <ArrowLeft color={CYBER_THEME.primary} size={24} />
       </TouchableOpacity>
 
       <View style={styles.statsOverlay}>
@@ -241,10 +311,19 @@ const styles = StyleSheet.create({
   mapWrapper: {
     width,
     height: width,
-    backgroundColor: "#111",
+    backgroundColor: "#050505",
     marginTop: 60,
+    borderBottomWidth: 1,
+    borderBottomColor: "#111",
   },
-  backButton: { position: "absolute", top: 50, left: 20 },
+  backButton: {
+    position: "absolute",
+    top: 50,
+    left: 20,
+    padding: 6,
+    borderRadius: 20,
+    backgroundColor: "rgba(0,0,0,0.6)",
+  },
   statsOverlay: { padding: 20 },
   headerRow: {
     flexDirection: "row",

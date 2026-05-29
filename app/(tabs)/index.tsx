@@ -17,7 +17,7 @@ import { LineChart } from "react-native-chart-kit";
 import api from "@/utils/api";
 import { CYBER_THEME } from "@/constants/Colors";
 import { useRouter, useFocusEffect } from "expo-router";
-import { User, Activity, Play } from "lucide-react-native";
+import { User, Activity, Play, Trophy, ShieldAlert } from "lucide-react-native";
 import { getToken } from "@/utils/authStorage";
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
@@ -30,6 +30,12 @@ export default function TabOneScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [imgError, setImgError] = useState(false);
   const router = useRouter();
+
+  // Leaderboard placement state tracking
+  const [rankInfo, setRankInfo] = useState<{
+    rank: number;
+    total: number;
+  } | null>(null);
 
   const [chartData, setChartData] = useState({
     labels: ["-", "-", "-", "-", "-", "-", "-"],
@@ -57,11 +63,12 @@ export default function TabOneScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([fetchProfile(), fetchStats()]);
+      const profile = await fetchProfile();
+      await Promise.all([fetchStats(), fetchLeaderboardPosition(profile?.id)]);
     } finally {
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]);
 
   const fetchStats = async () => {
     try {
@@ -93,8 +100,39 @@ export default function TabOneScreen() {
     try {
       const res = await api.get("/auth/profile");
       setUser(res.data);
+      return res.data;
     } catch (e: any) {
       if (e.response?.status === 401) router.replace("/login");
+      return null;
+    }
+  };
+
+  const fetchLeaderboardPosition = async (currentUserId: string) => {
+    if (!currentUserId) return;
+    try {
+      // ✅ SAFE PLACEMENT: Added the debug telemetry line safely inside the async flow
+      console.log(
+        "🛰️ DEBUG OUTGOING URL:",
+        api.defaults.baseURL + "/leaderboard",
+      );
+
+      const res = await api.get("/leaderboard");
+      const leaderboardList = res.data;
+
+      if (Array.isArray(leaderboardList)) {
+        const userIndex = leaderboardList.findIndex(
+          (entry: any) =>
+            entry.userId === currentUserId || entry.id === currentUserId,
+        );
+
+        setRankInfo({
+          rank: userIndex !== -1 ? userIndex + 1 : leaderboardList.length,
+          total: leaderboardList.length,
+        });
+      }
+    } catch (err) {
+      console.log("⚠️ LEADERBOARD STANDINGS RESOLVE FAILED:", err);
+      setRankInfo(null);
     }
   };
 
@@ -104,15 +142,19 @@ export default function TabOneScreen() {
       let token = api.defaults.headers.common["Authorization"];
       if (!token) {
         const storedToken = await getToken();
-        if (storedToken)
+        if (storedToken) {
           api.defaults.headers.common["Authorization"] =
             `Bearer ${storedToken}`;
-        else {
+        } else {
           router.replace("/login");
           return;
         }
       }
-      await Promise.all([fetchProfile(), fetchStats()]);
+      const activeUser = await fetchProfile();
+      await Promise.all([
+        fetchStats(),
+        fetchLeaderboardPosition(activeUser?.id),
+      ]);
     } finally {
       setIsLoading(false);
     }
@@ -162,7 +204,7 @@ export default function TabOneScreen() {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator color={CYBER_THEME.primary} size="large" />
-        <Text style={styles.loadingText}>ESTABLISHING_UPLINK...</Text>
+        <Text style={styles.loadingText}>ESTABLISHING UPLINK...</Text>
       </View>
     );
   }
@@ -206,13 +248,44 @@ export default function TabOneScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* 2. TACTICAL RECHART MIMIC (The "Data Container") */}
+          {/* 🏆 LIVE LEADERBOARD RANK BANNER */}
+          <View style={styles.rankContainer}>
+            <View style={styles.rankHeaderRow}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <Trophy size={14} color={CYBER_THEME.primary} />
+                <Text style={styles.rankTitle}>PRX STANDING</Text>
+              </View>
+              <Text style={styles.livePulseText}>SYNCED</Text>
+            </View>
+            {rankInfo ? (
+              <View style={styles.rankMetricsRow}>
+                <Text style={styles.rankBigNumber}>
+                  #{rankInfo.rank}
+                  <Text style={styles.rankSlashTotal}> / {rankInfo.total}</Text>
+                </Text>
+                <Text style={styles.rankStatusDescription}>
+                  {rankInfo.rank <= 3 ? "ELITE RANKING" : "OPERATIVE ASSIGNED"}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.rankFallbackBox}>
+                <ShieldAlert size={12} color="#444" />
+                <Text style={styles.rankFallbackText}>
+                  CALCULATING RANK MATRIX...
+                </Text>
+              </View>
+            )}
+          </View>
+
+          {/* 2. DATA CONTAINER */}
           <View style={styles.dataContainer}>
             <View style={styles.dataHeader}>
               <Text style={styles.dataTitle}>SESSION ACTIVITY LOGS (KM)</Text>
               <View style={styles.liveIndicator}>
                 <View style={styles.pulseDot} />
-                <Text style={styles.dataStatus}>LIVE_FEED</Text>
+                <Text style={styles.dataStatus}>LIVE FEED</Text>
               </View>
             </View>
 
@@ -246,11 +319,11 @@ export default function TabOneScreen() {
             {/* INTEGRATED METRIC ROW */}
             <View style={styles.metricRow}>
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>TOTAL_KM</Text>
+                <Text style={styles.metricLabel}>TOTAL KM</Text>
                 <Text style={styles.metricValue}>{summary.totalDistance}</Text>
               </View>
               <View style={styles.metricItem}>
-                <Text style={styles.metricLabel}>CORE_HRS</Text>
+                <Text style={styles.metricLabel}>CORE HRS</Text>
                 <Text style={styles.metricValue}>{summary.totalHours}</Text>
               </View>
               <View style={styles.metricItem}>
@@ -262,7 +335,7 @@ export default function TabOneScreen() {
         </View>
       </ScrollView>
 
-      {/* 🚀 BUMPING PLAY BUTTON (Maintained) */}
+      {/* 🚀 FLOATING PLAY BUTTON */}
       <Animated.View
         style={[
           styles.floatingIcon,
@@ -282,6 +355,7 @@ export default function TabOneScreen() {
   );
 }
 
+// ... styles object remains identical below
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
@@ -298,9 +372,8 @@ const styles = StyleSheet.create({
   },
   scrollContainer: { paddingBottom: 100 },
   container: { padding: 20, paddingTop: 60 },
-
-  header: { flexDirection: "row", alignItems: "center", marginBottom: 30 },
-  glitchText: { color: "#666", fontSize: 12, letterSpacing: 1 },
+  header: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
+  glitchText: { color: "#666", fontSize: 10, letterSpacing: 1 },
   glitchTextOpearative: {
     color: "#d4ff00",
     fontSize: 28,
@@ -308,7 +381,6 @@ const styles = StyleSheet.create({
     letterSpacing: -1,
   },
   subTitle: { color: "#444", fontSize: 10, fontWeight: "bold", marginTop: 4 },
-
   avatarContainer: {
     borderWidth: 1,
     borderColor: CYBER_THEME.primary,
@@ -324,8 +396,68 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-
-  /* 🛡️ RECHART MIMIC STYLES */
+  rankContainer: {
+    backgroundColor: "rgba(12, 12, 12, 0.9)",
+    borderWidth: 1,
+    borderColor: "#222",
+    padding: 14,
+    borderRadius: 2,
+    marginBottom: 20,
+  },
+  rankHeaderRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  rankTitle: {
+    fontSize: 8,
+    fontWeight: "900",
+    color: "#555",
+    letterSpacing: 1.5,
+  },
+  livePulseText: {
+    fontSize: 8,
+    fontWeight: "bold",
+    color: CYBER_THEME.primary,
+    letterSpacing: 1,
+  },
+  rankMetricsRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+  },
+  rankBigNumber: {
+    fontSize: 26,
+    fontWeight: "900",
+    color: "#fff",
+    lineHeight: 28,
+    fontFamily: Platform.OS === "ios" ? "Bebas Neue" : "sans-serif-condensed",
+  },
+  rankSlashTotal: {
+    fontSize: 14,
+    color: "#444",
+    fontWeight: "bold",
+  },
+  rankStatusDescription: {
+    fontSize: 9,
+    fontWeight: "bold",
+    color: CYBER_THEME.primary,
+    letterSpacing: 1,
+    paddingBottom: 2,
+  },
+  rankFallbackBox: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    paddingVertical: 4,
+  },
+  rankFallbackText: {
+    color: "#444",
+    fontSize: 9,
+    fontWeight: "bold",
+    letterSpacing: 0.5,
+  },
   dataContainer: {
     backgroundColor: "rgba(10, 10, 10, 0.8)",
     borderWidth: 1,
@@ -357,10 +489,8 @@ const styles = StyleSheet.create({
     marginRight: 6,
   },
   dataStatus: { fontSize: 8, color: CYBER_THEME.primary, fontWeight: "bold" },
-
   chartBox: { marginLeft: -20 },
   chart: { marginVertical: 8 },
-
   metricRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -382,8 +512,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     fontFamily: Platform.OS === "ios" ? "Bebas Neue" : "sans-serif-condensed",
   },
-
-  /* 🚀 FLOATING UI */
   floatingIcon: { position: "absolute", bottom: 40, right: 25, zIndex: 999 },
   playCircle: {
     width: BUTTON_SIZE,
